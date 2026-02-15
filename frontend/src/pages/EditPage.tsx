@@ -22,6 +22,7 @@ export default function EditPage() {
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#6366f1');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -58,10 +59,11 @@ export default function EditPage() {
     const name = newTagName.trim();
     if (!name) return;
     try {
-      const tag = await api.createTag(name);
+      const tag = await api.createTag(name, newTagColor);
       setAllTags(prev => [...prev, tag]);
       setSelectedTagIds(prev => [...prev, tag.id]);
       setNewTagName('');
+      setNewTagColor('#6366f1');
     } catch (err: any) {
       showToast(err.message, 'error');
     }
@@ -205,6 +207,13 @@ export default function EditPage() {
                   })}
                 </div>
                 <div className="tag-create-row">
+                  <input
+                    type="color"
+                    className="tag-color-input"
+                    value={newTagColor}
+                    onChange={e => setNewTagColor(e.target.value)}
+                    title="Tag color"
+                  />
                   <input
                     type="text"
                     placeholder="New tag name…"

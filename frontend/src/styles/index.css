@@ -2257,7 +2257,7 @@ button {
   align-items: center;
 }
 
-.tag-create-row input {
+.tag-create-row input[type="text"] {
   flex: 1;
   padding: 6px 10px;
   border: 1px solid var(--c-border);
@@ -2265,6 +2265,26 @@ button {
   background: var(--c-bg);
   color: var(--c-text);
   font-size: 0.85rem;
+}
+
+.tag-color-input {
+  width: 32px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tag-color-input::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.tag-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
 }
 
 .tag-create-row .btn-sm {
