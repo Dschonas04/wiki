@@ -22,6 +22,9 @@ if (!JWT_SECRET) {
 }
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '8h';
 const COOKIE_NAME = 'wiki_token';
+const COOKIE_SECURE = process.env.COOKIE_SECURE
+  ? process.env.COOKIE_SECURE === 'true'
+  : false; // Default to false — set to 'true' when behind HTTPS
 const BCRYPT_ROUNDS = 12;
 
 // LDAP Configuration
@@ -453,8 +456,8 @@ function signToken(user) {
 function setTokenCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'strict' : 'lax',
+    secure: COOKIE_SECURE,
+    sameSite: COOKIE_SECURE ? 'strict' : 'lax',
     maxAge: 8 * 60 * 60 * 1000,
     path: '/',
   });
