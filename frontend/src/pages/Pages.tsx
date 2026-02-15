@@ -8,6 +8,7 @@ import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import EmptyState from '../components/EmptyState';
 import ImportDialog from '../components/ImportDialog';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function Pages() {
   const [pages, setPages] = useState<WikiPage[]>([]);
@@ -15,6 +16,7 @@ export default function Pages() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; title: string } | null>(null);
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
   const canCreate = hasPermission('pages.create');
@@ -58,13 +60,14 @@ export default function Pages() {
   }, [search]);
 
   const handleDelete = async (id: number, title: string) => {
-    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
     try {
       await api.deletePage(id);
       setPages((prev) => prev.filter((p) => p.id !== id));
-      showToast('Page deleted', 'success');
+      showToast('Page moved to trash', 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
+    } finally {
+      setConfirmDelete(null);
     }
   };
 
@@ -196,7 +199,7 @@ export default function Pages() {
                       <button
                         className="icon-btn danger"
                         title="Delete"
-                        onClick={() => handleDelete(page.id, page.title)}
+                        onClick={() => setConfirmDelete({ id: page.id, title: page.title })}
                       >
                         <Trash2 size={15} />
                       </button>
@@ -229,6 +232,17 @@ export default function Pages() {
         <ImportDialog
           onClose={() => setShowImport(false)}
           onImported={() => { setShowImport(false); loadPages(); }}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete Page?"
+          message={`"${confirmDelete.title}" will be moved to trash. You can restore it later.`}
+          confirmLabel="Move to Trash"
+          variant="danger"
+          onConfirm={() => handleDelete(confirmDelete.id, confirmDelete.title)}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </>

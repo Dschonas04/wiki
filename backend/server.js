@@ -340,6 +340,32 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
         )
       `);
 
+      // Migration: FK ON DELETE SET NULL for created_by / updated_by
+      await client.query(`
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'wiki_pages_created_by_fkey' AND table_name = 'wiki_pages') THEN
+            ALTER TABLE wiki_pages DROP CONSTRAINT wiki_pages_created_by_fkey;
+            ALTER TABLE wiki_pages ADD CONSTRAINT wiki_pages_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
+          END IF;
+          IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'wiki_pages_updated_by_fkey' AND table_name = 'wiki_pages') THEN
+            ALTER TABLE wiki_pages DROP CONSTRAINT wiki_pages_updated_by_fkey;
+            ALTER TABLE wiki_pages ADD CONSTRAINT wiki_pages_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL;
+          END IF;
+        END; $$
+      `);
+
+      // Migration: soft delete support
+      await client.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='deleted_at') THEN
+            ALTER TABLE wiki_pages ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='deleted_by') THEN
+            ALTER TABLE wiki_pages ADD COLUMN deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+          END IF;
+        END; $$
+      `);
+
       // Indexes
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)');
@@ -566,6 +592,22 @@ function validatePageInput(title, content) {
 
 function getIp(req) {
   return req.headers['x-real-ip'] || req.ip;
+}
+
+// Check if user can access a page based on visibility
+async function canAccessPage(pageId, user) {
+  if (!pool) return false;
+  if (user.role === 'admin') return true;
+  const result = await pool.query(
+    `SELECT 1 FROM wiki_pages WHERE id = $1 AND (visibility = 'published' OR created_by = $2 OR EXISTS (SELECT 1 FROM wiki_page_shares WHERE page_id = $1 AND shared_with_user_id = $2))`,
+    [pageId, user.id]
+  );
+  return result.rows.length > 0;
+}
+
+// Validate hex color
+function isValidColor(color) {
+  return /^#[0-9a-fA-F]{6}$/.test(color);
 }
 
 // ==================================================
@@ -868,7 +910,7 @@ app.get('/api/pages/recent', authenticate, requirePermission('pages.read'), asyn
       SELECT p.id, p.title, p.updated_at, p.created_at, p.visibility, u.username AS updated_by_name
       FROM wiki_pages p
       LEFT JOIN users u ON p.updated_by = u.id
-      WHERE ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $2 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $2))`}
+      WHERE p.deleted_at IS NULL AND ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $2 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $2))`}
       ORDER BY p.updated_at DESC
       LIMIT $1`, isAdmin ? [limit] : [limit, req.user.id]);
     res.json(result.rows);
@@ -884,6 +926,7 @@ app.get('/api/pages/:id/export', authenticate, requirePermission('pages.read'), 
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
   try {
+    if (!(await canAccessPage(id, req.user))) return res.status(404).json({ error: 'Page not found' });
     const result = await pool.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
     const page = result.rows[0];
@@ -908,7 +951,7 @@ app.get('/api/pages/export-all', authenticate, requirePermission('pages.read'), 
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
-      WHERE ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $1 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $1))`}
+      WHERE p.deleted_at IS NULL AND ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $1 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $1))`}
       ORDER BY p.parent_id NULLS FIRST, p.title ASC`, isAdmin ? [] : [req.user.id]);
     const tagsResult = await pool.query(`
       SELECT pt.page_id, t.name, t.color
@@ -968,7 +1011,7 @@ app.get('/api/pages/search', authenticate, requirePermission('pages.read'), asyn
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
-      WHERE p.search_vector @@ plainto_tsquery('simple', $1)
+      WHERE p.deleted_at IS NULL AND p.search_vector @@ plainto_tsquery('simple', $1)
         AND ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $2 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $2))`}
       ORDER BY rank DESC, p.updated_at DESC
       LIMIT 50`,
@@ -987,11 +1030,11 @@ app.get('/api/pages', authenticate, requirePermission('pages.read'), async (req,
   try {
     const result = await pool.query(`
       SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
-             (SELECT COUNT(*) FROM wiki_pages c WHERE c.parent_id = p.id) AS children_count
+             (SELECT COUNT(*) FROM wiki_pages c WHERE c.parent_id = p.id AND c.deleted_at IS NULL) AS children_count
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
-      WHERE ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $1 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $1))`}
+      WHERE p.deleted_at IS NULL AND ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $1 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $1))`}
       ORDER BY p.updated_at DESC`, isAdmin ? [] : [req.user.id]);
     res.json(result.rows);
   } catch (err) {
@@ -1010,7 +1053,7 @@ app.get('/api/pages/:id', authenticate, requirePermission('pages.read'), async (
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
-      WHERE p.id = $1`, [id]);
+      WHERE p.id = $1 AND p.deleted_at IS NULL`, [id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
     const page = result.rows[0];
     // Visibility check: admins see all, others need ownership, share, or published
@@ -1094,6 +1137,7 @@ app.get('/api/pages/:id/versions', authenticate, requirePermission('pages.read')
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
   try {
+    if (!(await canAccessPage(id, req.user))) return res.status(404).json({ error: 'Page not found' });
     const result = await pool.query(
       `SELECT v.*, u.username AS created_by_name
        FROM wiki_page_versions v
@@ -1265,6 +1309,7 @@ app.get('/api/pages/:id/attachments', authenticate, requirePermission('pages.rea
   const pageId = parseInt(req.params.id);
   if (isNaN(pageId)) return res.status(400).json({ error: 'Invalid page ID' });
   try {
+    if (!(await canAccessPage(pageId, req.user))) return res.status(404).json({ error: 'Page not found' });
     const result = await pool.query(`
       SELECT a.*, u.username AS uploaded_by_name
       FROM wiki_attachments a
@@ -1356,10 +1401,11 @@ app.post('/api/tags', authenticate, requirePermission('pages.create'), writeLimi
   const { name, color } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Tag name is required.' });
   if (name.trim().length > 100) return res.status(400).json({ error: 'Tag name must be 100 characters or less.' });
+  const tagColor = color && isValidColor(color) ? color : '#6366f1';
   try {
     const result = await pool.query(
       'INSERT INTO wiki_tags (name, color) VALUES ($1, $2) RETURNING *',
-      [name.trim().toLowerCase(), color || '#6366f1']
+      [name.trim().toLowerCase(), tagColor]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -1584,17 +1630,78 @@ app.get('/api/shared', authenticate, async (req, res) => {
   }
 });
 
-// ==================== PAGE DELETE ====================
+// ==================== TRASH / SOFT DELETE ====================
 
+// Get trash (soft-deleted pages)
+app.get('/api/trash', authenticate, requirePermission('pages.read'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const isAdmin = req.user.role === 'admin';
+  try {
+    const result = await pool.query(`
+      SELECT p.id, p.title, p.deleted_at, p.visibility,
+             u1.username AS created_by_name, u2.username AS deleted_by_name
+      FROM wiki_pages p
+      LEFT JOIN users u1 ON p.created_by = u1.id
+      LEFT JOIN users u2 ON p.deleted_by = u2.id
+      WHERE p.deleted_at IS NOT NULL
+        AND ${isAdmin ? 'TRUE' : 'p.created_by = $1'}
+      ORDER BY p.deleted_at DESC`, isAdmin ? [] : [req.user.id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error getting trash:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve trash' });
+  }
+});
+
+// Restore from trash
+app.post('/api/trash/:id/restore', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const page = await pool.query('SELECT * FROM wiki_pages WHERE id = $1 AND deleted_at IS NOT NULL', [id]);
+    if (page.rows.length === 0) return res.status(404).json({ error: 'Page not found in trash' });
+    if (req.user.role !== 'admin' && page.rows[0].created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Only the page owner or an admin can restore this page' });
+    }
+    const result = await pool.query('UPDATE wiki_pages SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 RETURNING *', [id]);
+    await auditLog(req.user.id, req.user.username, 'restore_from_trash', 'page', id, { title: result.rows[0].title }, getIp(req));
+    res.json({ message: 'Page restored', page: result.rows[0] });
+  } catch (err) {
+    console.error('Error restoring page:', err.message);
+    res.status(500).json({ error: 'Failed to restore page' });
+  }
+});
+
+// Permanently delete from trash
+app.delete('/api/trash/:id', authenticate, requirePermission('pages.delete'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const result = await pool.query('DELETE FROM wiki_pages WHERE id = $1 AND deleted_at IS NOT NULL RETURNING *', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found in trash' });
+    await auditLog(req.user.id, req.user.username, 'permanent_delete_page', 'page', id, { title: result.rows[0].title }, getIp(req));
+    res.json({ message: 'Page permanently deleted' });
+  } catch (err) {
+    console.error('Error permanently deleting page:', err.message);
+    res.status(500).json({ error: 'Failed to permanently delete page' });
+  }
+});
+
+// Soft-delete page (move to trash)
 app.delete('/api/pages/:id', authenticate, requirePermission('pages.delete'), writeLimiter, async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
   try {
-    const result = await pool.query('DELETE FROM wiki_pages WHERE id = $1 RETURNING *', [id]);
+    const result = await pool.query(
+      'UPDATE wiki_pages SET deleted_at = CURRENT_TIMESTAMP, deleted_by = $1 WHERE id = $2 AND deleted_at IS NULL RETURNING *',
+      [req.user.id, id]
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
     await auditLog(req.user.id, req.user.username, 'delete_page', 'page', id, { title: result.rows[0].title }, getIp(req));
-    res.json({ message: 'Page deleted', page: result.rows[0] });
+    res.json({ message: 'Page moved to trash', page: result.rows[0] });
   } catch (err) {
     console.error('Error deleting page:', err.message);
     res.status(500).json({ error: 'Failed to delete page' });

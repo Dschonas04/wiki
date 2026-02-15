@@ -26,6 +26,9 @@ export default function EditPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [initialTitle, setInitialTitle] = useState('');
+  const [initialContent, setInitialContent] = useState('');
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
   const previewHtml = contentType === 'markdown'
@@ -38,6 +41,8 @@ export default function EditPage() {
       api.getPage(id).then((page) => {
         setTitle(page.title);
         setContent(page.content);
+        setInitialTitle(page.title);
+        setInitialContent(page.content);
         setContentType(page.content_type || 'markdown');
         setParentId(page.parent_id ?? null);
       }),
@@ -48,6 +53,26 @@ export default function EditPage() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Track dirty state
+  useEffect(() => {
+    if (initialTitle && (title !== initialTitle || content !== initialContent)) {
+      setIsDirty(true);
+    } else {
+      setIsDirty(false);
+    }
+  }, [title, content, initialTitle, initialContent]);
+
+  // Unsaved changes warning
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   const toggleTag = (tagId: number) => {
     setSelectedTagIds(prev =>
@@ -83,6 +108,7 @@ export default function EditPage() {
       });
       await api.setPageTags(id, selectedTagIds).catch(() => {});
       showToast('Page updated!', 'success');
+      setIsDirty(false);
       navigate(`/pages/${id}`);
     } catch (err: any) {
       showToast(err.message, 'error');

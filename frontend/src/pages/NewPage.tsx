@@ -22,12 +22,29 @@ export default function NewPage() {
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#6366f1');
   const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     api.getPages().then(setAllPages).catch(() => {});
     api.getTags().then(setAllTags).catch(() => {});
   }, []);
+
+  // Unsaved changes warning
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  // Track dirty state
+  useEffect(() => {
+    if (title.trim() || content.trim()) setIsDirty(true);
+  }, [title, content]);
 
   const toggleTag = (tagId: number) => {
     setSelectedTagIds(prev =>
@@ -69,6 +86,7 @@ export default function NewPage() {
         await api.setPageTags(page.id, selectedTagIds).catch(() => {});
       }
       showToast('Page created!', 'success');
+      setIsDirty(false);
       navigate(`/pages/${page.id}`);
     } catch (err: any) {
       showToast(err.message, 'error');

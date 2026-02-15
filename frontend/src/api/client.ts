@@ -136,6 +136,15 @@ export interface Attachment {
   created_at: string;
 }
 
+export interface TrashItem {
+  id: number;
+  title: string;
+  visibility: string;
+  deleted_at: string;
+  created_by_name?: string;
+  deleted_by_name?: string;
+}
+
 const API_BASE = '/api';
 
 async function request<T>(method: string, path: string, data?: unknown): Promise<T> {
@@ -272,4 +281,11 @@ export const api = {
   downloadAttachmentUrl: (id: number) => `${API_BASE}/attachments/${id}/download`,
   deleteAttachment: (id: number) =>
     request<{ message: string }>('DELETE', `/attachments/${id}`),
+
+  // Trash
+  getTrash: () => request<TrashItem[]>('GET', '/trash'),
+  restoreFromTrash: (id: number) =>
+    request<{ message: string; page: WikiPage }>('POST', `/trash/${id}/restore`),
+  permanentDelete: (id: number) =>
+    request<{ message: string }>('DELETE', `/trash/${id}`),
 };

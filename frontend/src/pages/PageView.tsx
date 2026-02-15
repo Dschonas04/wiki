@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2, Eye, EyeOff, Paperclip, Upload, X } from 'lucide-react';
+import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2, Eye, EyeOff, Paperclip, Upload, X, List } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType, type Attachment } from '../api/client';
@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import ShareDialog from '../components/ShareDialog';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function PageView() {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +25,9 @@ export default function PageView() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<Attachment | null>(null);
+  const [showToc, setShowToc] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
@@ -98,13 +102,14 @@ export default function PageView() {
 
   const handleDelete = async () => {
     if (!page) return;
-    if (!confirm(`Delete "${page.title}"? This cannot be undone.`)) return;
     try {
       await api.deletePage(page.id);
-      showToast('Page deleted', 'success');
+      showToast('Page moved to trash', 'success');
       navigate('/pages');
     } catch (err: any) {
       showToast(err.message, 'error');
+    } finally {
+      setConfirmDelete(false);
     }
   };
 
@@ -139,13 +144,14 @@ export default function PageView() {
   };
 
   const handleDeleteAttachment = async (att: Attachment) => {
-    if (!confirm(`Delete "${att.original_name}"?`)) return;
     try {
       await api.deleteAttachment(att.id);
       setAttachments(prev => prev.filter(a => a.id !== att.id));
       showToast('Attachment deleted', 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
+    } finally {
+      setConfirmDeleteAtt(null);
     }
   };
 
@@ -179,6 +185,32 @@ export default function PageView() {
       ? DOMPurify.sanitize(page.content || '', { ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'style'], ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'target', 'controls', 'autoplay'] })
       : DOMPurify.sanitize(marked.parse(page.content || '') as string)
     : '';
+
+  // Generate Table of Contents from headings
+  const tocItems = (() => {
+    if (!markdownHtml) return [];
+    const tmp = document.createElement('div');
+    tmp.innerHTML = markdownHtml;
+    const headings = tmp.querySelectorAll('h1, h2, h3, h4');
+    return Array.from(headings).map((h, i) => {
+      const level = parseInt(h.tagName[1]);
+      const text = h.textContent || '';
+      const id = `heading-${i}`;
+      return { level, text, id };
+    });
+  })();
+
+  // Inject IDs into the rendered HTML for anchor links
+  const htmlWithIds = (() => {
+    if (!markdownHtml || tocItems.length === 0) return markdownHtml;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = markdownHtml;
+    const headings = tmp.querySelectorAll('h1, h2, h3, h4');
+    headings.forEach((h, i) => {
+      h.id = `heading-${i}`;
+    });
+    return tmp.innerHTML;
+  })();
 
   if (loading) {
     return (
@@ -246,6 +278,12 @@ export default function PageView() {
               <Download size={16} />
               <span>Export</span>
             </a>
+            {tocItems.length > 0 && (
+              <button className={`btn ${showToc ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowToc(!showToc)} title="Table of Contents">
+                <List size={16} />
+                <span>TOC</span>
+              </button>
+            )}
             <button className="btn btn-secondary" onClick={handlePdfExport} title="Als PDF exportieren">
               <FileText size={16} />
               <span>PDF</span>
@@ -257,7 +295,7 @@ export default function PageView() {
               </button>
             )}
             {canDelete && (
-              <button className="btn btn-danger" onClick={handleDelete}>
+              <button className="btn btn-danger" onClick={() => setConfirmDelete(true)}>
                 <Trash2 size={16} />
                 <span>Delete</span>
               </button>
@@ -324,8 +362,29 @@ export default function PageView() {
           </div>
         )}
 
-        <div className="card page-view-card">
-          <div className="page-view-content markdown-body" dangerouslySetInnerHTML={{ __html: markdownHtml }} />
+        <div className={`page-layout ${showToc ? 'with-toc' : ''}`}>
+          {/* Table of Contents */}
+          {showToc && tocItems.length > 0 && (
+            <nav className="toc-sidebar">
+              <h4 className="toc-title">Table of Contents</h4>
+              <ul className="toc-list">
+                {tocItems.map(item => (
+                  <li key={item.id} className={`toc-item toc-level-${item.level}`}>
+                    <a href={`#${item.id}`} onClick={e => {
+                      e.preventDefault();
+                      document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}>{item.text}</a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+
+          <div className="page-layout-content">
+            <div className="card page-view-card">
+              <div className="page-view-content markdown-body" dangerouslySetInnerHTML={{ __html: htmlWithIds }} />
+            </div>
+          </div>
         </div>
 
         {/* Attachments */}
@@ -389,7 +448,7 @@ export default function PageView() {
                       <Download size={15} />
                     </a>
                     {canEdit && (
-                      <button className="icon-btn danger" title="Delete" onClick={() => handleDeleteAttachment(att)}>
+                      <button className="icon-btn danger" title="Delete" onClick={() => setConfirmDeleteAtt(att)}>
                         <Trash2 size={15} />
                       </button>
                     )}
@@ -427,6 +486,28 @@ export default function PageView() {
 
       {showShare && page && (
         <ShareDialog pageId={page.id} pageTitle={page.title} onClose={() => setShowShare(false)} />
+      )}
+
+      {confirmDelete && page && (
+        <ConfirmDialog
+          title="Delete Page?"
+          message={`"${page.title}" will be moved to trash. You can restore it later.`}
+          confirmLabel="Move to Trash"
+          variant="danger"
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {confirmDeleteAtt && (
+        <ConfirmDialog
+          title="Delete Attachment?"
+          message={`"${confirmDeleteAtt.original_name}" will be permanently deleted.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={() => handleDeleteAttachment(confirmDeleteAtt)}
+          onCancel={() => setConfirmDeleteAtt(null)}
+        />
       )}
     </>
   );

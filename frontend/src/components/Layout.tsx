@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   FileText,
@@ -17,15 +17,71 @@ import {
   Sun,
   Star,
   Share2,
+  Search,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../hooks/useTheme';
+import { api, type WikiPage } from '../api/client';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, logout, hasPermission, isAdmin } = useAuth();
   const { theme, toggleTheme, isDark } = useTheme();
+
+  // Global search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<WikiPage[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Keyboard shortcut: Ctrl/Cmd+K to focus search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+      if (e.key === 'Escape') setSearchOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Click outside to close search
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await api.searchPages(q);
+        setSearchResults(results.slice(0, 8));
+      } catch { setSearchResults([]); }
+      finally { setSearchLoading(false); }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Close search on navigation
+  useEffect(() => {
+    setSearchOpen(false);
+    setSearchQuery('');
+  }, [location.pathname]);
 
   const closeSidebar = () => setSidebarOpen(false);
 
@@ -34,6 +90,7 @@ export default function Layout() {
     { to: '/pages', icon: FileText, label: 'Pages', end: true, show: hasPermission('pages.read') },
     { to: '/favorites', icon: Star, label: 'Favorites', end: true, show: true },
     { to: '/shared', icon: Share2, label: 'Shared with me', end: true, show: true },
+    { to: '/trash', icon: Trash2, label: 'Trash', end: true, show: hasPermission('pages.read') },
     { to: '/pages/new', icon: PlusCircle, label: 'New Page', end: true, show: hasPermission('pages.create') },
     { to: '/users', icon: Users, label: 'Users', end: true, show: isAdmin },
     { to: '/audit', icon: ScrollText, label: 'Audit Log', end: true, show: isAdmin },
@@ -85,6 +142,59 @@ export default function Layout() {
             </div>
           </div>
         )}
+
+        {/* Global Search */}
+        <div className="sidebar-search" ref={searchRef}>
+          <div className="sidebar-search-input" onClick={() => setSearchOpen(true)}>
+            <Search size={15} />
+            <input
+              type="text"
+              placeholder="Search… ⌘K"
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+              onFocus={() => setSearchOpen(true)}
+            />
+          </div>
+          {searchOpen && searchQuery.trim() && (
+            <div className="sidebar-search-results">
+              {searchLoading ? (
+                <div className="search-result-empty">Searching…</div>
+              ) : searchResults.length === 0 ? (
+                <div className="search-result-empty">No results found</div>
+              ) : (
+                <>
+                  {searchResults.map(page => (
+                    <button
+                      key={page.id}
+                      className="search-result-item"
+                      onClick={() => {
+                        navigate(`/pages/${page.id}`);
+                        setSearchOpen(false);
+                        setSearchQuery('');
+                        closeSidebar();
+                      }}
+                    >
+                      <FileText size={14} />
+                      <span className="search-result-title">{page.title}</span>
+                    </button>
+                  ))}
+                  <button
+                    className="search-result-item search-result-all"
+                    onClick={() => {
+                      navigate(`/pages?q=${encodeURIComponent(searchQuery)}`);
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                      closeSidebar();
+                    }}
+                  >
+                    <Search size={14} />
+                    <span>View all results</span>
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         <nav className="sidebar-nav">
           <div className="nav-label">Navigation</div>
