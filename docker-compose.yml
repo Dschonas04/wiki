@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: wiki-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wiki-network
+
+  wiki:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wiki-app
+    restart: unless-stopped
+    ports:
+      - "8080:3000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+    volumes:
+      - wiki_uploads:/app/uploads
+      - wiki_config:/app/config
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - wiki-network
+
+volumes:
+  db_data:
+    name: wiki-db-data
+  wiki_uploads:
+    name: wiki-uploads
+  wiki_config:
+    name: wiki-config
+
+networks:
+  wiki-network:
+    name: wiki-network
+    driver: bridge
