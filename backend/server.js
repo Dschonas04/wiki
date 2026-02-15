@@ -161,6 +161,19 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
         )
       `);
 
+      // ===== Wiki page versions table =====
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS wiki_page_versions (
+          id SERIAL PRIMARY KEY,
+          page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+          title VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          created_by INTEGER REFERENCES users(id),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          version_number INTEGER NOT NULL
+        )
+      `);
+
       // ===== Audit log table =====
       await client.query(`
         CREATE TABLE IF NOT EXISTS audit_log (
@@ -185,7 +198,41 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='updated_by') THEN
             ALTER TABLE wiki_pages ADD COLUMN updated_by INTEGER REFERENCES users(id);
           END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='search_vector') THEN
+            ALTER TABLE wiki_pages ADD COLUMN search_vector tsvector;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='parent_id') THEN
+            ALTER TABLE wiki_pages ADD COLUMN parent_id INTEGER REFERENCES wiki_pages(id) ON DELETE SET NULL;
+          END IF;
         END; $$
+      `);
+
+      // Search vector trigger
+      await client.query(`
+        CREATE OR REPLACE FUNCTION update_wiki_search_vector()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.search_vector := to_tsvector('simple', coalesce(NEW.title,'') || ' ' || coalesce(NEW.content,''));
+          RETURN NEW;
+        END;
+        $$ LANGUAGE 'plpgsql'
+      `);
+
+      await client.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'wiki_pages_search_vector') THEN
+            CREATE TRIGGER wiki_pages_search_vector
+              BEFORE INSERT OR UPDATE ON wiki_pages
+              FOR EACH ROW
+              EXECUTE FUNCTION update_wiki_search_vector();
+          END IF;
+        END; $$
+      `);
+
+      await client.query(`
+        UPDATE wiki_pages
+        SET search_vector = to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(content,''))
+        WHERE search_vector IS NULL
       `);
 
       // Updated_at trigger
@@ -235,9 +282,44 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
         console.log('╚══════════════════════════════════════════════════╝');
       }
 
+      // ===== Tags table =====
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS wiki_tags (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL UNIQUE,
+          color VARCHAR(7) DEFAULT '#6366f1',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS wiki_page_tags (
+          page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+          tag_id INTEGER NOT NULL REFERENCES wiki_tags(id) ON DELETE CASCADE,
+          PRIMARY KEY (page_id, tag_id)
+        )
+      `);
+
+      // ===== Favorites table =====
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS wiki_favorites (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (user_id, page_id)
+        )
+      `);
+
       // Indexes
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_wiki_pages_search ON wiki_pages USING GIN (search_vector)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_versions_page ON wiki_page_versions(page_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_pages_parent ON wiki_pages(parent_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_page_tags_page ON wiki_page_tags(page_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_page_tags_tag ON wiki_page_tags(tag_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_favorites_user ON wiki_favorites(user_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_favorites_page ON wiki_favorites(page_id)');
 
       console.log('Database schema initialized');
       client.release();
@@ -714,11 +796,72 @@ app.get('/api/health/details', authenticate, requirePermission('health.read'), a
 
 // ==================== WIKI PAGES ====================
 
+// Recent pages (for dashboard widget)
+app.get('/api/pages/recent', authenticate, requirePermission('pages.read'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+  try {
+    const result = await pool.query(`
+      SELECT p.id, p.title, p.updated_at, p.created_at, u.username AS updated_by_name
+      FROM wiki_pages p
+      LEFT JOIN users u ON p.updated_by = u.id
+      ORDER BY p.updated_at DESC
+      LIMIT $1`, [limit]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error getting recent pages:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve recent pages' });
+  }
+});
+
+// Export page as markdown
+app.get('/api/pages/:id/export', authenticate, requirePermission('pages.read'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const result = await pool.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+    const page = result.rows[0];
+    const md = `# ${page.title}\n\n${page.content}\n\n---\n_Exported from Wiki on ${new Date().toISOString()}_\n`;
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${page.title.replace(/[^a-z0-9]/gi, '_')}.md"`);
+    res.send(md);
+  } catch (err) {
+    console.error('Error exporting page:', err.message);
+    res.status(500).json({ error: 'Failed to export page' });
+  }
+});
+
+app.get('/api/pages/search', authenticate, requirePermission('pages.read'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const q = (req.query.q || '').toString().trim();
+  if (!q) return res.json([]);
+  try {
+    const result = await pool.query(`
+      SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
+             ts_rank(p.search_vector, plainto_tsquery('simple', $1)) AS rank
+      FROM wiki_pages p
+      LEFT JOIN users u1 ON p.created_by = u1.id
+      LEFT JOIN users u2 ON p.updated_by = u2.id
+      WHERE p.search_vector @@ plainto_tsquery('simple', $1)
+      ORDER BY rank DESC, p.updated_at DESC
+      LIMIT 50`,
+      [q]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error searching pages:', err.message);
+    res.status(500).json({ error: 'Failed to search pages' });
+  }
+});
+
 app.get('/api/pages', authenticate, requirePermission('pages.read'), async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   try {
     const result = await pool.query(`
-      SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name
+      SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
+             (SELECT COUNT(*) FROM wiki_pages c WHERE c.parent_id = p.id) AS children_count
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
@@ -755,9 +898,14 @@ app.post('/api/pages', authenticate, requirePermission('pages.create'), writeLim
   const errors = validatePageInput(title, content);
   if (errors.length > 0) return res.status(400).json({ error: errors.join(' '), errors });
   try {
+    const parentId = req.body.parentId ? parseInt(req.body.parentId) : null;
     const result = await pool.query(
-      'INSERT INTO wiki_pages (title, content, created_by, updated_by) VALUES ($1, $2, $3, $3) RETURNING *',
-      [title.trim(), content.trim(), req.user.id]
+      'INSERT INTO wiki_pages (title, content, created_by, updated_by, parent_id) VALUES ($1, $2, $3, $3, $4) RETURNING *',
+      [title.trim(), content.trim(), req.user.id, parentId]
+    );
+    await pool.query(
+      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number) VALUES ($1, $2, $3, $4, $5)',
+      [result.rows[0].id, title.trim(), content.trim(), req.user.id, 1]
     );
     await auditLog(req.user.id, req.user.username, 'create_page', 'page', result.rows[0].id, { title: title.trim() }, getIp(req));
     res.status(201).json(result.rows[0]);
@@ -776,9 +924,23 @@ app.put('/api/pages/:id', authenticate, requirePermission('pages.edit'), writeLi
   const errors = validatePageInput(title, content);
   if (errors.length > 0) return res.status(400).json({ error: errors.join(' '), errors });
   try {
+    const current = await pool.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
+    if (current.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+
+    const nextVersion = await pool.query(
+      'SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM wiki_page_versions WHERE page_id = $1',
+      [id]
+    );
+    await pool.query(
+      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number) VALUES ($1, $2, $3, $4, $5)',
+      [id, current.rows[0].title, current.rows[0].content, req.user.id, parseInt(nextVersion.rows[0].next)]
+    );
+
+    const parentId = req.body.parentId !== undefined ? (req.body.parentId ? parseInt(req.body.parentId) : null) : current.rows[0].parent_id;
+    if (parentId === id) return res.status(400).json({ error: 'A page cannot be its own parent.' });
     const result = await pool.query(
-      'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3 WHERE id = $4 RETURNING *',
-      [title.trim(), content.trim(), req.user.id, id]
+      'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3, parent_id = $4 WHERE id = $5 RETURNING *',
+      [title.trim(), content.trim(), req.user.id, parentId, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
     await auditLog(req.user.id, req.user.username, 'update_page', 'page', id, { title: title.trim() }, getIp(req));
@@ -789,6 +951,215 @@ app.put('/api/pages/:id', authenticate, requirePermission('pages.edit'), writeLi
     res.status(500).json({ error: 'Failed to update page' });
   }
 });
+
+app.get('/api/pages/:id/versions', authenticate, requirePermission('pages.read'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const result = await pool.query(
+      `SELECT v.*, u.username AS created_by_name
+       FROM wiki_page_versions v
+       LEFT JOIN users u ON v.created_by = u.id
+       WHERE v.page_id = $1
+       ORDER BY v.version_number DESC`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error listing versions:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve versions' });
+  }
+});
+
+app.post('/api/pages/:id/restore', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  const { versionId } = req.body;
+  if (isNaN(id) || !versionId) return res.status(400).json({ error: 'Invalid page or version ID' });
+
+  try {
+    const version = await pool.query('SELECT * FROM wiki_page_versions WHERE id = $1 AND page_id = $2', [versionId, id]);
+    if (version.rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+
+    const current = await pool.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
+    if (current.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+
+    const nextVersion = await pool.query(
+      'SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM wiki_page_versions WHERE page_id = $1',
+      [id]
+    );
+    await pool.query(
+      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number) VALUES ($1, $2, $3, $4, $5)',
+      [id, current.rows[0].title, current.rows[0].content, req.user.id, parseInt(nextVersion.rows[0].next)]
+    );
+
+    const restored = await pool.query(
+      'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3 WHERE id = $4 RETURNING *',
+      [version.rows[0].title, version.rows[0].content, req.user.id, id]
+    );
+
+    await auditLog(req.user.id, req.user.username, 'restore_page', 'page', id, { versionId }, getIp(req));
+    res.json(restored.rows[0]);
+  } catch (err) {
+    console.error('Error restoring page:', err.message);
+    res.status(500).json({ error: 'Failed to restore page' });
+  }
+});
+
+// ==================== TAGS ====================
+
+// List all tags
+app.get('/api/tags', authenticate, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const result = await pool.query(`
+      SELECT t.*, COUNT(pt.page_id) AS page_count
+      FROM wiki_tags t
+      LEFT JOIN wiki_page_tags pt ON t.id = pt.tag_id
+      GROUP BY t.id
+      ORDER BY t.name ASC`);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error listing tags:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve tags' });
+  }
+});
+
+// Create tag (editor+)
+app.post('/api/tags', authenticate, requirePermission('pages.create'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const { name, color } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Tag name is required.' });
+  if (name.trim().length > 100) return res.status(400).json({ error: 'Tag name must be 100 characters or less.' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO wiki_tags (name, color) VALUES ($1, $2) RETURNING *',
+      [name.trim().toLowerCase(), color || '#6366f1']
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Tag already exists.' });
+    console.error('Error creating tag:', err.message);
+    res.status(500).json({ error: 'Failed to create tag' });
+  }
+});
+
+// Delete tag (admin only)
+app.delete('/api/tags/:id', authenticate, requirePermission('users.manage'), writeLimiter, async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid tag ID' });
+  try {
+    const result = await pool.query('DELETE FROM wiki_tags WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Tag not found' });
+    res.json({ message: 'Tag deleted' });
+  } catch (err) {
+    console.error('Error deleting tag:', err.message);
+    res.status(500).json({ error: 'Failed to delete tag' });
+  }
+});
+
+// Get tags for a page
+app.get('/api/pages/:id/tags', authenticate, requirePermission('pages.read'), async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const result = await pool.query(
+      `SELECT t.* FROM wiki_tags t
+       JOIN wiki_page_tags pt ON t.id = pt.tag_id
+       WHERE pt.page_id = $1
+       ORDER BY t.name ASC`, [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error getting page tags:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve page tags' });
+  }
+});
+
+// Set tags for a page (replaces all)
+app.put('/api/pages/:id/tags', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  const { tagIds } = req.body;
+  if (!Array.isArray(tagIds)) return res.status(400).json({ error: 'tagIds must be an array.' });
+  try {
+    await pool.query('DELETE FROM wiki_page_tags WHERE page_id = $1', [id]);
+    for (const tagId of tagIds) {
+      await pool.query('INSERT INTO wiki_page_tags (page_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, tagId]);
+    }
+    const result = await pool.query(
+      `SELECT t.* FROM wiki_tags t JOIN wiki_page_tags pt ON t.id = pt.tag_id WHERE pt.page_id = $1 ORDER BY t.name`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error setting page tags:', err.message);
+    res.status(500).json({ error: 'Failed to update page tags' });
+  }
+});
+
+// ==================== FAVORITES ====================
+
+// Get user's favorites
+app.get('/api/favorites', authenticate, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const result = await pool.query(`
+      SELECT p.id, p.title, p.updated_at, p.created_at, f.created_at AS favorited_at,
+             u.username AS updated_by_name
+      FROM wiki_favorites f
+      JOIN wiki_pages p ON f.page_id = p.id
+      LEFT JOIN users u ON p.updated_by = u.id
+      WHERE f.user_id = $1
+      ORDER BY f.created_at DESC`, [req.user.id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error getting favorites:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve favorites' });
+  }
+});
+
+// Toggle favorite
+app.post('/api/favorites/:pageId', authenticate, writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const pageId = parseInt(req.params.pageId);
+  if (isNaN(pageId)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const existing = await pool.query(
+      'SELECT 1 FROM wiki_favorites WHERE user_id = $1 AND page_id = $2',
+      [req.user.id, pageId]
+    );
+    if (existing.rows.length > 0) {
+      await pool.query('DELETE FROM wiki_favorites WHERE user_id = $1 AND page_id = $2', [req.user.id, pageId]);
+      res.json({ favorited: false });
+    } else {
+      await pool.query('INSERT INTO wiki_favorites (user_id, page_id) VALUES ($1, $2)', [req.user.id, pageId]);
+      res.json({ favorited: true });
+    }
+  } catch (err) {
+    console.error('Error toggling favorite:', err.message);
+    res.status(500).json({ error: 'Failed to toggle favorite' });
+  }
+});
+
+// Check if page is favorited
+app.get('/api/favorites/:pageId/check', authenticate, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const pageId = parseInt(req.params.pageId);
+  if (isNaN(pageId)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const result = await pool.query(
+      'SELECT 1 FROM wiki_favorites WHERE user_id = $1 AND page_id = $2',
+      [req.user.id, pageId]
+    );
+    res.json({ favorited: result.rows.length > 0 });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check favorite' });
+  }
+});
+
+// ==================== PAGE DELETE ====================
 
 app.delete('/api/pages/:id', authenticate, requirePermission('pages.delete'), writeLimiter, async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });

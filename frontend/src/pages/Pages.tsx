@@ -32,8 +32,28 @@ export default function Pages() {
   };
 
   useEffect(() => {
-    loadPages();
-  }, []);
+    const q = search.trim();
+    setError('');
+
+    if (!q) {
+      loadPages();
+      return;
+    }
+
+    const handle = setTimeout(async () => {
+      try {
+        setLoading(true);
+        const data = await api.searchPages(q);
+        setPages(data);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(handle);
+  }, [search]);
 
   const handleDelete = async (id: number, title: string) => {
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
@@ -46,11 +66,7 @@ export default function Pages() {
     }
   };
 
-  const filtered = pages.filter(
-    (p) =>
-      p.title.toLowerCase().includes(search.toLowerCase()) ||
-      p.content.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = pages;
 
   const formatDate = (s: string) =>
     new Date(s).toLocaleDateString('de-DE', {

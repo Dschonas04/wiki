@@ -13,19 +13,25 @@ import {
   LogOut,
   Shield,
   Lock,
+  Moon,
+  Sun,
+  Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../hooks/useTheme';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { user, logout, hasPermission, isAdmin } = useAuth();
+  const { theme, toggleTheme, isDark } = useTheme();
 
   const closeSidebar = () => setSidebarOpen(false);
 
   const navItems = [
     { to: '/', icon: Home, label: 'Home', end: true, show: true },
     { to: '/pages', icon: FileText, label: 'Pages', end: true, show: hasPermission('pages.read') },
+    { to: '/favorites', icon: Star, label: 'Favorites', end: true, show: true },
     { to: '/pages/new', icon: PlusCircle, label: 'New Page', end: true, show: hasPermission('pages.create') },
     { to: '/users', icon: Users, label: 'Users', end: true, show: isAdmin },
     { to: '/audit', icon: ScrollText, label: 'Audit Log', end: true, show: isAdmin },
@@ -97,6 +103,10 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-footer">
+          <button className="sidebar-theme-toggle" onClick={toggleTheme} title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+            <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+          </button>
           <button className="sidebar-logout" onClick={handleLogout}>
             <LogOut size={16} />
             <span>Sign Out</span>

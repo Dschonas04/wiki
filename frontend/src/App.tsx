@@ -5,8 +5,10 @@ import Layout from './components/Layout';
 import Home from './pages/Home';
 import Pages from './pages/Pages';
 import PageView from './pages/PageView';
+import PageHistory from './pages/PageHistory';
 import NewPage from './pages/NewPage';
 import EditPage from './pages/EditPage';
+import Favorites from './pages/Favorites';
 import Health from './pages/Health';
 import Login from './pages/Login';
 import UsersPage from './pages/Users';
@@ -53,9 +55,11 @@ function AppRoutes() {
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
+        <Route path="/favorites" element={<Favorites />} />
         <Route path="/pages" element={<RequireAuth permission="pages.read"><Pages /></RequireAuth>} />
         <Route path="/pages/new" element={<RequireAuth permission="pages.create"><NewPage /></RequireAuth>} />
         <Route path="/pages/:id" element={<RequireAuth permission="pages.read"><PageView /></RequireAuth>} />
+        <Route path="/pages/:id/history" element={<RequireAuth permission="pages.read"><PageHistory /></RequireAuth>} />
         <Route path="/pages/:id/edit" element={<RequireAuth permission="pages.edit"><EditPage /></RequireAuth>} />
         <Route path="/users" element={<RequireAuth permission="users.read"><UsersPage /></RequireAuth>} />
         <Route path="/audit" element={<RequireAuth permission="audit.read"><AuditLog /></RequireAuth>} />

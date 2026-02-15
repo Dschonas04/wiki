@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Save, X } from 'lucide-react';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import { api } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageHeader from '../components/PageHeader';
@@ -15,6 +17,7 @@ export default function EditPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const previewHtml = DOMPurify.sanitize(marked.parse(content || '') as string);
 
   useEffect(() => {
     if (!id) return;
@@ -86,16 +89,23 @@ export default function EditPage() {
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="content">Content</label>
-            <textarea
-              id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              required
-              maxLength={100000}
-              rows={16}
-            />
+          <div className="editor-grid">
+            <div className="form-group">
+              <label htmlFor="content">Content (Markdown)</label>
+              <textarea
+                id="content"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                required
+                maxLength={100000}
+                rows={16}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Live Preview</label>
+              <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
           </div>
 
           <div className="form-actions">

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Save, X } from 'lucide-react';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import { api } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageHeader from '../components/PageHeader';
@@ -11,6 +13,7 @@ export default function NewPage() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const previewHtml = DOMPurify.sanitize(marked.parse(content || '') as string);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,17 +53,24 @@ export default function NewPage() {
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="content">Content</label>
-            <textarea
-              id="content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Write your content here…"
-              required
-              maxLength={100000}
-              rows={14}
-            />
+          <div className="editor-grid">
+            <div className="form-group">
+              <label htmlFor="content">Content (Markdown)</label>
+              <textarea
+                id="content"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Write your content here…"
+                required
+                maxLength={100000}
+                rows={14}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Live Preview</label>
+              <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
           </div>
 
           <div className="form-actions">

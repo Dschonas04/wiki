@@ -2,6 +2,8 @@ export interface WikiPage {
   id: number;
   title: string;
   content: string;
+  parent_id?: number | null;
+  children_count?: number;
   created_by_name?: string;
   updated_by_name?: string;
   created_at: string;
@@ -15,8 +17,8 @@ export interface HealthData {
   rbac?: string;
   roles?: string[];
   timestamp: string;
-  nodeVersion: string;
-  environment: string;
+  uptime?: number;
+  counts?: { users: number; pages: number };
 }
 
 export interface ApiError {
@@ -66,6 +68,29 @@ export interface AuditResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface PageVersion {
+  id: number;
+  page_id: number;
+  title: string;
+  content: string;
+  created_by?: number;
+  created_by_name?: string;
+  created_at: string;
+  version_number: number;
+}
+
+export interface Tag {
+  id: number;
+  name: string;
+  color: string;
+  page_count?: number;
+  created_at: string;
+}
+
+export interface FavoritePage extends WikiPage {
+  favorited_at: string;
 }
 
 const API_BASE = '/api';
@@ -119,13 +144,19 @@ export const api = {
 
   // Pages
   getPages: () => request<WikiPage[]>('GET', '/pages'),
+  getRecentPages: (limit = 10) => request<WikiPage[]>('GET', `/pages/recent?limit=${limit}`),
+  searchPages: (q: string) => request<WikiPage[]>('GET', `/pages/search?q=${encodeURIComponent(q)}`),
   getPage: (id: number | string) => request<WikiPage>('GET', `/pages/${id}`),
-  createPage: (data: { title: string; content: string }) =>
+  createPage: (data: { title: string; content: string; parentId?: number | null }) =>
     request<WikiPage>('POST', '/pages', data),
-  updatePage: (id: number | string, data: { title: string; content: string }) =>
+  updatePage: (id: number | string, data: { title: string; content: string; parentId?: number | null }) =>
     request<WikiPage>('PUT', `/pages/${id}`, data),
   deletePage: (id: number | string) =>
     request<{ message: string; page: WikiPage }>('DELETE', `/pages/${id}`),
+  exportPage: (id: number | string) => `${API_BASE}/pages/${id}/export`,
+  getPageVersions: (id: number | string) => request<PageVersion[]>('GET', `/pages/${id}/versions`),
+  restorePageVersion: (id: number | string, versionId: number) =>
+    request<WikiPage>('POST', `/pages/${id}/restore`, { versionId }),
 
   // Users (admin)
   getUsers: () => request<UserListItem[]>('GET', '/users'),
@@ -142,4 +173,22 @@ export const api = {
 
   // Health
   getHealth: () => request<HealthData>('GET', '/health/details'),
+
+  // Tags
+  getTags: () => request<Tag[]>('GET', '/tags'),
+  createTag: (name: string, color?: string) =>
+    request<Tag>('POST', '/tags', { name, color }),
+  deleteTag: (id: number) =>
+    request<{ message: string }>('DELETE', `/tags/${id}`),
+  getPageTags: (pageId: number | string) =>
+    request<Tag[]>('GET', `/pages/${pageId}/tags`),
+  setPageTags: (pageId: number | string, tagIds: number[]) =>
+    request<Tag[]>('PUT', `/pages/${pageId}/tags`, { tagIds }),
+
+  // Favorites
+  getFavorites: () => request<FavoritePage[]>('GET', '/favorites'),
+  toggleFavorite: (pageId: number | string) =>
+    request<{ favorited: boolean }>('POST', `/favorites/${pageId}`),
+  checkFavorite: (pageId: number | string) =>
+    request<{ favorited: boolean }>('GET', `/favorites/${pageId}/check`),
 };

@@ -7,6 +7,7 @@ import {
   Shield,
   Clock,
   Terminal,
+  Users,
 } from 'lucide-react';
 import { api, type HealthData } from '../api/client';
 import PageHeader from '../components/PageHeader';
@@ -116,7 +117,7 @@ export default function Health() {
               <span>Running</span>
             </div>
             <div className="health-detail">
-              Node.js {data?.nodeVersion}
+              Uptime {Math.floor((data?.uptime || 0) / 60)} min
             </div>
           </div>
 
@@ -136,11 +137,14 @@ export default function Health() {
 
           <div className="health-card">
             <div className="health-card-header">
-              <Clock size={20} />
-              <span>Environment</span>
+              <Users size={20} />
+              <span>Counts</span>
             </div>
-            <div className="health-detail large">
-              {data?.environment || 'unknown'}
+            <div className="health-detail">
+              Users: {data?.counts?.users ?? '—'}
+            </div>
+            <div className="health-detail">
+              Pages: {data?.counts?.pages ?? '—'}
             </div>
           </div>
         </div>

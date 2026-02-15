@@ -12,6 +12,7 @@ const ACTION_COLORS: Record<string, string> = {
   create_page: 'blue',
   update_page: 'orange',
   delete_page: 'red',
+  restore_page: 'purple',
   create_user: 'blue',
   update_user: 'orange',
   delete_user: 'red',
