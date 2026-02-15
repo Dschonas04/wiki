@@ -46,8 +46,8 @@ const LDAP_ROLE_MAP = {
 // RBAC Permissions per role
 const PERMISSIONS = {
   admin:  ['pages.read', 'pages.create', 'pages.edit', 'pages.delete', 'users.read', 'users.manage', 'health.read', 'audit.read'],
-  editor: ['pages.read', 'pages.create', 'pages.edit', 'pages.delete', 'health.read'],
-  viewer: ['pages.read', 'health.read'],
+  editor: ['pages.read', 'pages.create', 'pages.edit', 'pages.delete'],
+  viewer: ['pages.read'],
 };
 
 // ==================== SECURITY ====================
