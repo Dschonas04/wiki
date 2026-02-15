@@ -1,14 +1,33 @@
 # Wiki Application with PostgreSQL
 
-A simple wiki web application running in Docker containers with persistent PostgreSQL database.
+A modern wiki web application with an Outline-inspired interface, running in Docker containers with persistent PostgreSQL database.
 
 ## 🚀 Features
 
-- **Wiki Application**: Simple web-based wiki for creating and viewing pages
+- **Modern UI**: Clean, professional interface inspired by Outline
+- **Sidebar Navigation**: Fixed sidebar with organized navigation
+- **Wiki Application**: Web-based wiki for creating and viewing pages
 - **PostgreSQL Database**: Persistent database storage with health checks
 - **Docker Compose**: Easy deployment and management
 - **Automatic Reconnection**: Wiki app automatically reconnects to database
 - **Persistent Storage**: Named volumes for database and wiki uploads/config
+- **Responsive Design**: Works seamlessly on desktop and mobile devices
+
+## 🎨 Frontend Design
+
+The wiki features a modern, professional interface inspired by [Outline](https://www.getoutline.com/):
+
+- **Sidebar Navigation**: Fixed sidebar with logo and organized navigation
+- **Modern Color Scheme**: Professional blue-purple primary color (#4E5AEE)
+- **Card-based Layouts**: Clean cards for content organization
+- **Smooth Animations**: Hover effects and transitions for better UX
+- **Typography**: System fonts with optimized hierarchy
+- **Responsive**: Mobile-friendly design that adapts to screen size
+
+For detailed design documentation, see:
+- [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md) - Complete design overview
+- [DESIGN_MOCKUPS.md](DESIGN_MOCKUPS.md) - Visual mockups and layouts
+- [FRONTEND_REDESIGN_DE.md](FRONTEND_REDESIGN_DE.md) - German summary
 
 ## 📋 Prerequisites
 
