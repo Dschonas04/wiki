@@ -180,6 +180,7 @@ export default function Pages() {
                     )}
                     {page.title}
                     {page.content_type === 'html' && <span className="badge badge-html">HTML</span>}
+                    {page.visibility === 'draft' && <span className="badge badge-draft">Draft</span>}
                   </Link>
                   <div className="page-card-actions">
                     {canEdit && (

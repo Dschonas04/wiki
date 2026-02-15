@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2 } from 'lucide-react';
+import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2, Eye, EyeOff } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType } from '../api/client';
@@ -22,9 +22,12 @@ export default function PageView() {
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const { showToast } = useToast();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const canEdit = hasPermission('pages.edit');
   const canDelete = hasPermission('pages.delete');
+  const isOwner = page ? page.created_by === user?.id : false;
+  const isAdmin = user?.role === 'admin';
+  const canChangeVisibility = isOwner || isAdmin;
 
   useEffect(() => {
     if (!id) return;
@@ -100,6 +103,18 @@ export default function PageView() {
     }
   };
 
+  const toggleVisibility = async () => {
+    if (!page) return;
+    const newVis = page.visibility === 'published' ? 'draft' : 'published';
+    try {
+      const updated = await api.setPageVisibility(page.id, newVis);
+      setPage(updated);
+      showToast(newVis === 'published' ? 'Page published — now visible to all users' : 'Page set to draft — only visible to you', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const formatDateLong = (s: string) =>
     new Date(s).toLocaleDateString('de-DE', {
       year: 'numeric',
@@ -148,6 +163,16 @@ export default function PageView() {
         title={page.title}
         actions={
           <div className="btn-row">
+            {canChangeVisibility && (
+              <button
+                className={`btn ${page.visibility === 'published' ? 'btn-secondary' : 'btn-success'}`}
+                onClick={toggleVisibility}
+                title={page.visibility === 'published' ? 'Set to draft (hide from others)' : 'Publish (make visible to all)'}
+              >
+                {page.visibility === 'published' ? <EyeOff size={16} /> : <Eye size={16} />}
+                <span>{page.visibility === 'published' ? 'Unpublish' : 'Publish'}</span>
+              </button>
+            )}
             <button
               className={`btn ${favorited ? 'btn-warning' : 'btn-secondary'}`}
               onClick={toggleFavorite}
@@ -192,6 +217,19 @@ export default function PageView() {
       />
 
       <div className="content-body">
+        {/* Draft notice */}
+        {page.visibility !== 'published' && (
+          <div className="draft-banner">
+            <EyeOff size={16} />
+            <span>This page is a <strong>draft</strong> — only visible to you{isAdmin ? ' (admin)' : ''} and admins.</span>
+            {canChangeVisibility && (
+              <button className="btn btn-sm btn-success" onClick={toggleVisibility}>
+                <Eye size={14} /> Publish
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Tags bar */}
         <div className="tags-bar">
           {tags.map(tag => (

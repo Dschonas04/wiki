@@ -5,10 +5,12 @@ export interface WikiPage {
   content_type?: 'markdown' | 'html';
   parent_id?: number | null;
   children_count?: number;
+  created_by?: number;
   created_by_name?: string;
   updated_by_name?: string;
   created_at: string;
   updated_at: string;
+  visibility?: 'draft' | 'published';
 }
 
 export interface HealthData {
@@ -231,4 +233,8 @@ export const api = {
   unsharePage: (pageId: number | string, userId: number) =>
     request<PageShare[]>('DELETE', `/pages/${pageId}/shares/${userId}`),
   getSharedWithMe: () => request<SharedPage[]>('GET', '/shared'),
+
+  // Visibility
+  setPageVisibility: (pageId: number | string, visibility: 'draft' | 'published') =>
+    request<WikiPage>('PUT', `/pages/${pageId}/visibility`, { visibility }),
 };

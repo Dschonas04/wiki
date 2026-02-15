@@ -210,6 +210,10 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='content_type') THEN
             ALTER TABLE wiki_pages ADD COLUMN content_type VARCHAR(20) NOT NULL DEFAULT 'markdown';
           END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='visibility') THEN
+            ALTER TABLE wiki_pages ADD COLUMN visibility VARCHAR(20) NOT NULL DEFAULT 'draft';
+            UPDATE wiki_pages SET visibility = 'published';
+          END IF;
         END; $$
       `);
 
@@ -840,13 +844,15 @@ app.get('/api/health/details', authenticate, requirePermission('health.read'), a
 app.get('/api/pages/recent', authenticate, requirePermission('pages.read'), async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+  const isAdmin = req.user.role === 'admin';
   try {
     const result = await pool.query(`
-      SELECT p.id, p.title, p.updated_at, p.created_at, u.username AS updated_by_name
+      SELECT p.id, p.title, p.updated_at, p.created_at, p.visibility, u.username AS updated_by_name
       FROM wiki_pages p
       LEFT JOIN users u ON p.updated_by = u.id
+      WHERE ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $2 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $2))`}
       ORDER BY p.updated_at DESC
-      LIMIT $1`, [limit]);
+      LIMIT $1`, isAdmin ? [limit] : [limit, req.user.id]);
     res.json(result.rows);
   } catch (err) {
     console.error('Error getting recent pages:', err.message);
@@ -876,6 +882,7 @@ app.get('/api/pages/:id/export', authenticate, requirePermission('pages.read'), 
 // Export full page tree as JSON (all pages with hierarchy)
 app.get('/api/pages/export-all', authenticate, requirePermission('pages.read'), async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const isAdmin = req.user.role === 'admin';
   try {
     const result = await pool.query(`
       SELECT p.id, p.title, p.content, p.content_type, p.parent_id, p.created_at, p.updated_at,
@@ -883,7 +890,8 @@ app.get('/api/pages/export-all', authenticate, requirePermission('pages.read'), 
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
-      ORDER BY p.parent_id NULLS FIRST, p.title ASC`);
+      WHERE ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $1 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $1))`}
+      ORDER BY p.parent_id NULLS FIRST, p.title ASC`, isAdmin ? [] : [req.user.id]);
     const tagsResult = await pool.query(`
       SELECT pt.page_id, t.name, t.color
       FROM wiki_page_tags pt
@@ -934,6 +942,7 @@ app.get('/api/pages/search', authenticate, requirePermission('pages.read'), asyn
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   const q = (req.query.q || '').toString().trim();
   if (!q) return res.json([]);
+  const isAdmin = req.user.role === 'admin';
   try {
     const result = await pool.query(`
       SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
@@ -942,9 +951,10 @@ app.get('/api/pages/search', authenticate, requirePermission('pages.read'), asyn
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
       WHERE p.search_vector @@ plainto_tsquery('simple', $1)
+        AND ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $2 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $2))`}
       ORDER BY rank DESC, p.updated_at DESC
       LIMIT 50`,
-      [q]
+      isAdmin ? [q] : [q, req.user.id]
     );
     res.json(result.rows);
   } catch (err) {
@@ -955,6 +965,7 @@ app.get('/api/pages/search', authenticate, requirePermission('pages.read'), asyn
 
 app.get('/api/pages', authenticate, requirePermission('pages.read'), async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const isAdmin = req.user.role === 'admin';
   try {
     const result = await pool.query(`
       SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
@@ -962,7 +973,8 @@ app.get('/api/pages', authenticate, requirePermission('pages.read'), async (req,
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
-      ORDER BY p.updated_at DESC`);
+      WHERE ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $1 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $1))`}
+      ORDER BY p.updated_at DESC`, isAdmin ? [] : [req.user.id]);
     res.json(result.rows);
   } catch (err) {
     console.error('Error listing pages:', err.message);
@@ -982,7 +994,13 @@ app.get('/api/pages/:id', authenticate, requirePermission('pages.read'), async (
       LEFT JOIN users u2 ON p.updated_by = u2.id
       WHERE p.id = $1`, [id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
-    res.json(result.rows[0]);
+    const page = result.rows[0];
+    // Visibility check: admins see all, others need ownership, share, or published
+    if (req.user.role !== 'admin' && page.visibility !== 'published' && page.created_by !== req.user.id) {
+      const shared = await pool.query('SELECT 1 FROM wiki_page_shares WHERE page_id = $1 AND shared_with_user_id = $2', [id, req.user.id]);
+      if (shared.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+    }
+    res.json(page);
   } catch (err) {
     console.error('Error getting page:', err.message);
     res.status(500).json({ error: 'Failed to retrieve page' });
@@ -997,9 +1015,10 @@ app.post('/api/pages', authenticate, requirePermission('pages.create'), writeLim
   try {
     const parentId = req.body.parentId ? parseInt(req.body.parentId) : null;
     const contentType = req.body.contentType === 'html' ? 'html' : 'markdown';
+    const visibility = req.body.visibility === 'published' ? 'published' : 'draft';
     const result = await pool.query(
-      'INSERT INTO wiki_pages (title, content, created_by, updated_by, parent_id, content_type) VALUES ($1, $2, $3, $3, $4, $5) RETURNING *',
-      [title.trim(), content.trim(), req.user.id, parentId, contentType]
+      'INSERT INTO wiki_pages (title, content, created_by, updated_by, parent_id, content_type, visibility) VALUES ($1, $2, $3, $3, $4, $5, $6) RETURNING *',
+      [title.trim(), content.trim(), req.user.id, parentId, contentType, visibility]
     );
     await pool.query(
       'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number, content_type) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -1037,9 +1056,10 @@ app.put('/api/pages/:id', authenticate, requirePermission('pages.edit'), writeLi
     const parentId = req.body.parentId !== undefined ? (req.body.parentId ? parseInt(req.body.parentId) : null) : current.rows[0].parent_id;
     if (parentId === id) return res.status(400).json({ error: 'A page cannot be its own parent.' });
     const contentType = req.body.contentType !== undefined ? (req.body.contentType === 'html' ? 'html' : 'markdown') : (current.rows[0].content_type || 'markdown');
+    const visibility = req.body.visibility !== undefined ? (['draft','published'].includes(req.body.visibility) ? req.body.visibility : current.rows[0].visibility) : (current.rows[0].visibility || 'draft');
     const result = await pool.query(
-      'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3, parent_id = $4, content_type = $5 WHERE id = $6 RETURNING *',
-      [title.trim(), content.trim(), req.user.id, parentId, contentType, id]
+      'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3, parent_id = $4, content_type = $5, visibility = $6 WHERE id = $7 RETURNING *',
+      [title.trim(), content.trim(), req.user.id, parentId, contentType, visibility, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
     await auditLog(req.user.id, req.user.username, 'update_page', 'page', id, { title: title.trim() }, getIp(req));
@@ -1103,6 +1123,29 @@ app.post('/api/pages/:id/restore', authenticate, requirePermission('pages.edit')
   } catch (err) {
     console.error('Error restoring page:', err.message);
     res.status(500).json({ error: 'Failed to restore page' });
+  }
+});
+
+// Toggle page visibility (publish / unpublish)
+app.put('/api/pages/:id/visibility', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  const { visibility } = req.body;
+  if (!['draft', 'published'].includes(visibility)) return res.status(400).json({ error: 'Visibility must be draft or published' });
+  try {
+    const page = await pool.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
+    if (page.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+    // Only owner or admin can change visibility
+    if (req.user.role !== 'admin' && page.rows[0].created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Only the page owner or an admin can change visibility' });
+    }
+    const result = await pool.query('UPDATE wiki_pages SET visibility = $1 WHERE id = $2 RETURNING *', [visibility, id]);
+    await auditLog(req.user.id, req.user.username, visibility === 'published' ? 'publish_page' : 'unpublish_page', 'page', id, { title: page.rows[0].title }, getIp(req));
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error changing visibility:', err.message);
+    res.status(500).json({ error: 'Failed to change page visibility' });
   }
 });
 
