@@ -1,4 +1,80 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: wiki-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      wiki:
+        condition: service_healthy
+    networks:
+      - wiki-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  wiki:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wiki-app
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES: ${JWT_EXPIRES}
+      LDAP_ENABLED: ${LDAP_ENABLED}
+      LDAP_URL: ${LDAP_URL}
+      LDAP_BIND_DN: ${LDAP_BIND_DN}
+      LDAP_BIND_PW: ${LDAP_BIND_PW}
+      LDAP_SEARCH_BASE: ${LDAP_SEARCH_BASE}
+      LDAP_SEARCH_FILTER: ${LDAP_SEARCH_FILTER}
+      LDAP_GROUP_BASE: ${LDAP_GROUP_BASE}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - wiki-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  ldap:
+    image: osixia/openldap:1.5.0
+    container_name: wiki-ldap
+    restart: unless-stopped
+    environment:
+      LDAP_ORGANISATION: "Wiki"
+      LDAP_DOMAIN: "wiki.local"
+      LDAP_ADMIN_PASSWORD: ${LDAP_BIND_PW}
+      LDAP_TLS: "false"
+    volumes:
+      - ldap_data:/var/lib/ldap
+      - ldap_config:/etc/ldap/slapd.d
+      - ./config/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom
+    command: "--copy-service --loglevel debug"
+    networks:
+      - wiki-network
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost -b dc=wiki,dc=local -D cn=admin,dc=wiki,dc=local -w $$LDAP_ADMIN_PASSWORD"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   db:
     image: postgres:15-alpine
     container_name: wiki-db
@@ -17,36 +93,13 @@ services:
     networks:
       - wiki-network
 
-  wiki:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: wiki-app
-    restart: unless-stopped
-    ports:
-      - "8080:3000"
-    environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASS: ${DB_PASS}
-    volumes:
-      - wiki_uploads:/app/uploads
-      - wiki_config:/app/config
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - wiki-network
-
 volumes:
   db_data:
     name: wiki-db-data
-  wiki_uploads:
-    name: wiki-uploads
-  wiki_config:
-    name: wiki-config
+  ldap_data:
+    name: wiki-ldap-data
+  ldap_config:
+    name: wiki-ldap-config
 
 networks:
   wiki-network:

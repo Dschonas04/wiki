@@ -1,307 +1,231 @@
-# Wiki Application with PostgreSQL
+# Wiki
 
-A modern wiki web application with an Outline-inspired interface, running in Docker containers with persistent PostgreSQL database.
+A self-hosted wiki application with role-based access control (RBAC) and optional LDAP authentication.
 
-## 🚀 Features
+Built with **React**, **Node.js**, **PostgreSQL**, and **Nginx** — fully containerized with Docker Compose.
 
-- **Modern UI**: Clean, professional interface inspired by Outline
-- **Sidebar Navigation**: Fixed sidebar with organized navigation
-- **Wiki Application**: Web-based wiki for creating and viewing pages
-- **PostgreSQL Database**: Persistent database storage with health checks
-- **Docker Compose**: Easy deployment and management
-- **Automatic Reconnection**: Wiki app automatically reconnects to database
-- **Persistent Storage**: Named volumes for database and wiki uploads/config
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
+## Features
 
-## 🎨 Frontend Design
+- **Authentication** — JWT sessions with httpOnly cookies, bcrypt password hashing
+- **RBAC** — Three roles: Admin, Editor, Viewer with granular permissions
+- **LDAP** — Optional LDAP/Active Directory integration with group-to-role mapping
+- **Audit Log** — Tracks logins, page edits, user management events
+- **User Management** — Admin panel for creating/editing/deactivating users
+- **Wiki Pages** — Create, edit, delete, search with author tracking
+- **Security** — Helmet, CSRF protection, rate limiting, CSP headers, non-root containers
+- **Responsive UI** — React SPA with sidebar navigation, mobile support
 
-The wiki features a modern, professional interface inspired by [Outline](https://www.getoutline.com/):
+## Architecture
 
-- **Sidebar Navigation**: Fixed sidebar with logo and organized navigation
-- **Modern Color Scheme**: Professional blue-purple primary color (#4E5AEE)
-- **Card-based Layouts**: Clean cards for content organization
-- **Smooth Animations**: Hover effects and transitions for better UX
-- **Typography**: System fonts with optimized hierarchy
-- **Responsive**: Mobile-friendly design that adapts to screen size
+```
+Browser :8080
+   │
+   ▼
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│  Nginx   │────▶│ Node.js  │────▶│ Postgres │     │ OpenLDAP │
+│ Frontend │     │ Backend  │     │    DB    │     │ (optional)│
+│  :80     │     │  :3000   │     │  :5432   │     │  :389    │
+└──────────┘     └──────────┘     └──────────┘     └──────────┘
+```
 
-For detailed design documentation, see:
-- [FRONTEND_DESIGN.md](FRONTEND_DESIGN.md) - Complete design overview
-- [DESIGN_MOCKUPS.md](DESIGN_MOCKUPS.md) - Visual mockups and layouts
-- [FRONTEND_REDESIGN_DE.md](FRONTEND_REDESIGN_DE.md) - German summary
+| Service  | Image / Stack           | Purpose                                    |
+|----------|-------------------------|--------------------------------------------|
+| frontend | React + Vite → Nginx    | SPA + reverse proxy to API                 |
+| backend  | Node.js 18 + Express    | REST API, JWT auth, RBAC, LDAP             |
+| db       | PostgreSQL 15           | Users, pages, audit log                    |
+| ldap     | osixia/openldap 1.5     | Optional external authentication           |
 
-## 📋 Prerequisites
+## Quick Start
 
-- Docker Engine 20.10 or higher
-- Docker Compose 2.0 or higher
+### Prerequisites
 
-## 🔧 Setup
+- Docker Engine ≥ 20.10
+- Docker Compose ≥ 2.0
 
-### 1. Initial Configuration
-
-Create a `.env` file from the example:
+### 1. Clone and configure
 
 ```bash
+git clone <repo-url> wiki && cd wiki
 cp .env.example .env
 ```
 
-Edit `.env` and set secure credentials:
+Edit `.env` and set **strong, unique values**:
+
+```bash
+# Generate a secure JWT secret:
+openssl rand -base64 32
+
+# Generate a secure DB password:
+openssl rand -base64 24
+```
 
 ```env
-DB_NAME=wikidb
-DB_USER=wikiuser
-DB_PASS=your_secure_password_here
+DB_PASS=<your-secure-db-password>
+JWT_SECRET=<your-secure-jwt-secret>
 ```
 
-**Important**: Change `DB_PASS` to a strong, unique password!
-
-## 🎯 Usage
-
-### Start the Application
-
-Start all services:
+### 2. Start
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-This will:
-- Start PostgreSQL database with health check
-- Wait for database to be ready
-- Start the wiki application
-- Expose the wiki on http://localhost:8080
+### 3. Open
 
-View logs:
+Navigate to **http://localhost:8080**
+
+Default login: `admin` / `admin` — **change this password immediately** via the User Management panel.
+
+## Project Structure
+
+```
+wiki/
+├── docker-compose.yml
+├── .env.example
+├── backend/                 # Node.js REST API
+│   ├── Dockerfile
+│   ├── package.json
+│   └── server.js
+├── frontend/                # React SPA (Vite + TypeScript)
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   └── src/
+│       ├── api/             # API client
+│       ├── components/      # Layout, Loading, PageHeader
+│       ├── context/         # AuthContext, ToastContext
+│       ├── pages/           # Login, Home, Pages, Users, AuditLog, Health
+│       └── styles/          # CSS design system
+├── config/
+│   └── ldap/                # LDAP seed data (LDIF)
+└── docs/                    # Design documentation
+```
+
+## RBAC Roles
+
+| Permission      | Admin | Editor | Viewer |
+|-----------------|:-----:|:------:|:------:|
+| Read pages      |   ✅  |   ✅   |   ✅   |
+| Create pages    |   ✅  |   ✅   |   ❌   |
+| Edit pages      |   ✅  |   ✅   |   ❌   |
+| Delete pages    |   ✅  |   ✅   |   ❌   |
+| Manage users    |   ✅  |   ❌   |   ❌   |
+| View audit log  |   ✅  |   ❌   |   ❌   |
+| System health   |   ✅  |   ✅   |   ✅   |
+
+## API Endpoints
+
+### Auth
+| Method | Endpoint          | Auth | Description            |
+|--------|-------------------|------|------------------------|
+| POST   | /api/auth/login   | No   | Login (local or LDAP)  |
+| POST   | /api/auth/logout  | Yes  | Logout                 |
+| GET    | /api/auth/me      | Yes  | Current user info      |
+
+### Pages
+| Method | Endpoint          | Permission    | Description        |
+|--------|-------------------|---------------|--------------------|
+| GET    | /api/pages        | pages.read    | List all pages     |
+| GET    | /api/pages/:id    | pages.read    | Get single page    |
+| POST   | /api/pages        | pages.create  | Create page        |
+| PUT    | /api/pages/:id    | pages.edit    | Update page        |
+| DELETE | /api/pages/:id    | pages.delete  | Delete page        |
+
+### Admin
+| Method | Endpoint          | Permission    | Description        |
+|--------|-------------------|---------------|--------------------|
+| GET    | /api/users        | users.read    | List users         |
+| POST   | /api/users        | users.manage  | Create user        |
+| PUT    | /api/users/:id    | users.manage  | Update user        |
+| DELETE | /api/users/:id    | users.manage  | Delete user        |
+| GET    | /api/audit        | audit.read    | Audit log          |
+
+### Health
+| Method | Endpoint          | Auth | Description            |
+|--------|-------------------|------|------------------------|
+| GET    | /api/health       | No   | Health check           |
+
+## LDAP Integration
+
+LDAP is **disabled by default**. To enable:
+
+1. Set `LDAP_ENABLED=true` in `.env`
+2. Configure the LDAP connection variables
+3. Restart: `docker compose up -d`
+
+LDAP groups are mapped to wiki roles:
+
+| LDAP Group | Wiki Role |
+|------------|-----------|
+| admins     | admin     |
+| editors    | editor    |
+| viewers    | viewer    |
+
+Users are auto-provisioned on first LDAP login. Local auth is used as fallback.
+
+## Operations
+
+### Logs
 
 ```bash
-docker-compose logs -f
+docker compose logs -f           # all services
+docker compose logs -f wiki      # backend only
 ```
 
-Check service status:
+### Backup
 
 ```bash
-docker-compose ps
-```
-
-### Access the Application
-
-Open your browser and navigate to:
-
-```
-http://localhost:8080
-```
-
-Available endpoints:
-- `/` - Home page
-- `/pages` - View and create wiki pages
-- `/health` - Health check endpoint
-
-### Stop the Application
-
-Stop all services (keeps data):
-
-```bash
-docker-compose stop
-```
-
-Stop and remove containers (keeps data):
-
-```bash
-docker-compose down
-```
-
-Stop and remove everything including volumes (⚠️ DELETES ALL DATA):
-
-```bash
-docker-compose down -v
-```
-
-## 🔄 Update
-
-To update the application:
-
-1. Pull latest changes:
-```bash
-git pull
-```
-
-2. Rebuild and restart:
-```bash
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-3. Check logs:
-```bash
-docker-compose logs -f wiki
-```
-
-## 💾 Backup & Restore
-
-### Backup Database
-
-Create a backup of the PostgreSQL database:
-
-```bash
-# Set your database password
-export DB_PASS=your_password_here
-
-# Create backup file with timestamp
-docker-compose exec -T db pg_dump -U wikiuser -d wikidb > backup_$(date +%Y%m%d_%H%M%S).sql
-```
-
-Or use the environment variable from .env:
-
-```bash
-# Load environment variables
 source .env
-
-# Create backup
-docker-compose exec -T db pg_dump -U $DB_USER -d $DB_NAME > backup_$(date +%Y%m%d_%H%M%S).sql
+docker compose exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" > "backup_$(date +%Y%m%d_%H%M%S).sql"
 ```
 
-### Restore Database
-
-Restore from a backup file:
+### Restore
 
 ```bash
-# Load environment variables
 source .env
-
-# Stop the wiki service
-docker-compose stop wiki
-
-# Restore database
-cat backup_20240101_120000.sql | docker-compose exec -T db psql -U $DB_USER -d $DB_NAME
-
-# Restart wiki service
-docker-compose start wiki
+docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" < backup_YYYYMMDD_HHMMSS.sql
 ```
 
-Or restore with password:
+### Rebuild
 
 ```bash
-export DB_PASS=your_password_here
-docker-compose exec -T db psql -U wikiuser -d wikidb < backup_20240101_120000.sql
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
-### Backup Volumes
-
-Backup wiki uploads and configuration:
+### Reset (⚠️ deletes all data)
 
 ```bash
-# Backup uploads
-docker run --rm -v wiki-uploads:/data -v $(pwd):/backup alpine tar czf /backup/wiki_uploads_$(date +%Y%m%d_%H%M%S).tar.gz -C /data .
-
-# Backup config
-docker run --rm -v wiki-config:/data -v $(pwd):/backup alpine tar czf /backup/wiki_config_$(date +%Y%m%d_%H%M%S).tar.gz -C /data .
+docker compose down -v
 ```
 
-### Restore Volumes
+## Environment Variables
 
-Restore wiki uploads and configuration:
+| Variable           | Required | Default                         | Description                     |
+|--------------------|:--------:|---------------------------------|---------------------------------|
+| DB_NAME            | No       | wikidb                          | Database name                   |
+| DB_USER            | No       | wikiuser                        | Database user                   |
+| DB_PASS            | **Yes**  | —                               | Database password               |
+| JWT_SECRET         | **Yes**  | —                               | JWT signing secret (≥ 32 chars) |
+| JWT_EXPIRES        | No       | 8h                              | JWT token lifetime              |
+| LDAP_ENABLED       | No       | false                           | Enable LDAP authentication      |
+| LDAP_URL           | No       | ldap://ldap:389                 | LDAP server URL                 |
+| LDAP_BIND_DN       | No       | cn=admin,dc=wiki,dc=local       | LDAP service account DN         |
+| LDAP_BIND_PW       | If LDAP  | —                               | LDAP service account password   |
+| LDAP_SEARCH_BASE   | No       | ou=users,dc=wiki,dc=local       | LDAP user search base           |
+| LDAP_SEARCH_FILTER | No       | (uid={{username}})              | LDAP user search filter         |
+| LDAP_GROUP_BASE    | No       | ou=groups,dc=wiki,dc=local      | LDAP group search base          |
 
-```bash
-# Restore uploads
-docker run --rm -v wiki-uploads:/data -v $(pwd):/backup alpine sh -c "cd /data && tar xzf /backup/wiki_uploads_20240101_120000.tar.gz"
+## Security Notes
 
-# Restore config
-docker run --rm -v wiki-config:/data -v $(pwd):/backup alpine sh -c "cd /data && tar xzf /backup/wiki_config_20240101_120000.tar.gz"
-```
+- **Never commit `.env`** — it's in `.gitignore` by default
+- **Change the default admin password** after first login
+- JWT secret must be ≥ 32 characters; generate with `openssl rand -base64 32`
+- All containers run as non-root users
+- CSRF protection via `X-Requested-With` header
+- Rate limiting on auth (20/15min), writes (60/15min), general (300/15min)
+- Nginx adds CSP, HSTS, X-Frame-Options, X-Content-Type-Options headers
 
-## 🔍 Troubleshooting
+## License
 
-### Check Database Health
-
-```bash
-docker-compose exec db pg_isready -U wikiuser -d wikidb
-```
-
-### View Database Logs
-
-```bash
-docker-compose logs db
-```
-
-### Connect to Database
-
-```bash
-docker-compose exec db psql -U wikiuser -d wikidb
-```
-
-### View Wiki Application Logs
-
-```bash
-docker-compose logs wiki
-```
-
-### Restart Services
-
-```bash
-docker-compose restart
-```
-
-## 📁 Volume Information
-
-The application uses the following named volumes:
-
-- `wiki-db-data`: PostgreSQL database files
-- `wiki-uploads`: Wiki file uploads
-- `wiki-config`: Wiki configuration files
-
-To list volumes:
-
-```bash
-docker volume ls | grep wiki
-```
-
-To inspect a volume:
-
-```bash
-docker volume inspect wiki-db-data
-```
-
-## 🏗️ Architecture
-
-```
-┌─────────────────┐
-│   Browser       │
-│  Port 8080      │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐     ┌──────────────────┐
-│   Wiki App      │────▶│   PostgreSQL     │
-│   Container     │     │   Container      │
-│   Port 3000     │     │   Port 5432      │
-└─────────────────┘     └──────────────────┘
-         │                       │
-         ▼                       ▼
-┌─────────────────┐     ┌──────────────────┐
-│ wiki-uploads    │     │  wiki-db-data    │
-│ wiki-config     │     │    (volume)      │
-│   (volumes)     │     └──────────────────┘
-└─────────────────┘
-```
-
-## 🔒 Security Notes
-
-- **Change default passwords** in `.env` file
-- **Don't commit** `.env` file to version control (already in `.gitignore`)
-- Use strong passwords for production deployments
-- Consider using Docker secrets for sensitive data in production
-- Regular backups are recommended
-
-## 📝 Environment Variables
-
-| Variable  | Description                    | Default     |
-|-----------|--------------------------------|-------------|
-| DB_NAME   | PostgreSQL database name       | wikidb      |
-| DB_USER   | PostgreSQL username            | wikiuser    |
-| DB_PASS   | PostgreSQL password            | (required)  |
-| DB_HOST   | Database host (set by compose) | db          |
-| DB_PORT   | Database port                  | 5432        |
-
-## 📄 License
-
-See LICENSE file for details.
+Apache License 2.0 — see [LICENSE](LICENSE).

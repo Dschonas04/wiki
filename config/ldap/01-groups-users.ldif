@@ -1,0 +1,70 @@
+# Organizational Units
+dn: ou=users,dc=wiki,dc=local
+objectClass: organizationalUnit
+ou: users
+
+dn: ou=groups,dc=wiki,dc=local
+objectClass: organizationalUnit
+ou: groups
+
+# Groups
+dn: cn=admins,ou=groups,dc=wiki,dc=local
+objectClass: groupOfNames
+cn: admins
+member: uid=ldapadmin,ou=users,dc=wiki,dc=local
+
+dn: cn=editors,ou=groups,dc=wiki,dc=local
+objectClass: groupOfNames
+cn: editors
+member: uid=ldapeditor,ou=users,dc=wiki,dc=local
+
+dn: cn=viewers,ou=groups,dc=wiki,dc=local
+objectClass: groupOfNames
+cn: viewers
+member: uid=ldapviewer,ou=users,dc=wiki,dc=local
+
+# Users  (password for all: "password")
+dn: uid=ldapadmin,ou=users,dc=wiki,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: LDAP Admin
+sn: Admin
+uid: ldapadmin
+displayName: LDAP Admin
+mail: ldapadmin@wiki.local
+uidNumber: 10000
+gidNumber: 10000
+homeDirectory: /home/ldapadmin
+userPassword: {SSHA}password
+memberOf: cn=admins,ou=groups,dc=wiki,dc=local
+
+dn: uid=ldapeditor,ou=users,dc=wiki,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: LDAP Editor
+sn: Editor
+uid: ldapeditor
+displayName: LDAP Editor
+mail: ldapeditor@wiki.local
+uidNumber: 10001
+gidNumber: 10000
+homeDirectory: /home/ldapeditor
+userPassword: {SSHA}password
+memberOf: cn=editors,ou=groups,dc=wiki,dc=local
+
+dn: uid=ldapviewer,ou=users,dc=wiki,dc=local
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: LDAP Viewer
+sn: Viewer
+uid: ldapviewer
+displayName: LDAP Viewer
+mail: ldapviewer@wiki.local
+uidNumber: 10002
+gidNumber: 10000
+homeDirectory: /home/ldapviewer
+userPassword: {SSHA}password
+memberOf: cn=viewers,ou=groups,dc=wiki,dc=local
