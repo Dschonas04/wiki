@@ -124,6 +124,18 @@ export interface UserBasic {
   displayName: string;
 }
 
+export interface Attachment {
+  id: number;
+  page_id: number;
+  filename: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  uploaded_by: number;
+  uploaded_by_name?: string;
+  created_at: string;
+}
+
 const API_BASE = '/api';
 
 async function request<T>(method: string, path: string, data?: unknown): Promise<T> {
@@ -237,4 +249,27 @@ export const api = {
   // Visibility
   setPageVisibility: (pageId: number | string, visibility: 'draft' | 'published') =>
     request<WikiPage>('PUT', `/pages/${pageId}/visibility`, { visibility }),
+
+  // Attachments
+  getAttachments: (pageId: number | string) =>
+    request<Attachment[]>('GET', `/pages/${pageId}/attachments`),
+  uploadAttachment: async (pageId: number | string, file: File): Promise<Attachment> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/pages/${pageId}/attachments`, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'WikiApp' },
+      credentials: 'same-origin',
+      body: formData,
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg = (json as ApiError)?.error || `Upload failed (${res.status})`;
+      throw new Error(msg);
+    }
+    return json as Attachment;
+  },
+  downloadAttachmentUrl: (id: number) => `${API_BASE}/attachments/${id}/download`,
+  deleteAttachment: (id: number) =>
+    request<{ message: string }>('DELETE', `/attachments/${id}`),
 };

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2, Eye, EyeOff } from 'lucide-react';
+import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2, Eye, EyeOff, Paperclip, Upload, X } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { api, type WikiPage, type Tag as TagType } from '../api/client';
+import { api, type WikiPage, type Tag as TagType, type Attachment } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
@@ -21,6 +21,10 @@ export default function PageView() {
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
   const canEdit = hasPermission('pages.edit');
@@ -36,6 +40,7 @@ export default function PageView() {
       api.getPage(id).then(setPage).catch((err) => setError(err.status === 404 ? 'Page not found.' : err.message)),
       api.checkFavorite(id).then(r => setFavorited(r.favorited)).catch(() => {}),
       api.getPageTags(id).then(setTags).catch(() => {}),
+      api.getAttachments(id).then(setAttachments).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [id]);
 
@@ -113,6 +118,51 @@ export default function PageView() {
     } catch (err: any) {
       showToast(err.message, 'error');
     }
+  };
+
+  const handleFileUpload = async (files: FileList | File[]) => {
+    if (!id || !files.length) return;
+    setUploading(true);
+    let successCount = 0;
+    for (const file of Array.from(files)) {
+      try {
+        const att = await api.uploadAttachment(id, file);
+        setAttachments(prev => [att, ...prev]);
+        successCount++;
+      } catch (err: any) {
+        showToast(`Failed to upload "${file.name}": ${err.message}`, 'error');
+      }
+    }
+    if (successCount > 0) showToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDeleteAttachment = async (att: Attachment) => {
+    if (!confirm(`Delete "${att.original_name}"?`)) return;
+    try {
+      await api.deleteAttachment(att.id);
+      setAttachments(prev => prev.filter(a => a.id !== att.id));
+      showToast('Attachment deleted', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.startsWith('image/')) return '🖼️';
+    if (mimeType === 'application/pdf') return '📄';
+    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
+    if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || mimeType === 'text/csv') return '📊';
+    if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return '📽️';
+    if (mimeType.includes('zip') || mimeType.includes('tar') || mimeType.includes('gzip')) return '📦';
+    return '📎';
   };
 
   const formatDateLong = (s: string) =>
@@ -276,6 +326,78 @@ export default function PageView() {
 
         <div className="card page-view-card">
           <div className="page-view-content markdown-body" dangerouslySetInnerHTML={{ __html: markdownHtml }} />
+        </div>
+
+        {/* Attachments */}
+        <div className="attachments-section">
+          <div className="attachments-header">
+            <h3><Paperclip size={18} /> Attachments {attachments.length > 0 && <span className="attachments-count">{attachments.length}</span>}</h3>
+            {canEdit && (
+              <div className="attachments-actions">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
+                />
+                <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                  <Upload size={14} />
+                  <span>{uploading ? 'Uploading…' : 'Upload File'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {canEdit && (
+            <div
+              className={`attachments-dropzone ${dragOver ? 'drag-over' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files);
+              }}
+            >
+              <Upload size={20} />
+              <span>Drag & drop files here</span>
+            </div>
+          )}
+
+          {attachments.length > 0 && (
+            <div className="attachments-list">
+              {attachments.map(att => (
+                <div key={att.id} className="attachment-item">
+                  <span className="attachment-icon">{getFileIcon(att.mime_type)}</span>
+                  <div className="attachment-info">
+                    <a
+                      href={api.downloadAttachmentUrl(att.id)}
+                      className="attachment-name"
+                      download
+                    >
+                      {att.original_name}
+                    </a>
+                    <span className="attachment-meta">
+                      {formatFileSize(att.size_bytes)}
+                      {att.uploaded_by_name && ` · ${att.uploaded_by_name}`}
+                      {' · '}{new Date(att.created_at).toLocaleDateString('de-DE')}
+                    </span>
+                  </div>
+                  <div className="attachment-actions">
+                    <a href={api.downloadAttachmentUrl(att.id)} className="icon-btn" title="Download" download>
+                      <Download size={15} />
+                    </a>
+                    {canEdit && (
+                      <button className="icon-btn danger" title="Delete" onClick={() => handleDeleteAttachment(att)}>
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="page-view-meta">

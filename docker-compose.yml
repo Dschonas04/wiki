@@ -45,6 +45,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - attachments_data:/app/uploads
     networks:
       - wiki-network
     healthcheck:
@@ -102,6 +104,8 @@ volumes:
     name: wiki-ldap-data
   ldap_config:
     name: wiki-ldap-config
+  attachments_data:
+    name: wiki-attachments-data
 
 networks:
   wiki-network:
