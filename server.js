@@ -7,6 +7,7 @@ const port = parseInt(process.env.PORT || '3000');
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
 
 // Database configuration with retry logic
 const dbConfig = {
@@ -61,29 +62,81 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-      <title>Wiki Application</title>
-      <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 0 20px; }
-        h1 { color: #333; }
-        .nav { margin: 20px 0; }
-        .nav a { margin-right: 15px; text-decoration: none; color: #007bff; }
-        .nav a:hover { text-decoration: underline; }
-        .info { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0; }
-      </style>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Wiki - Home</title>
+      <link rel="stylesheet" href="/style.css">
     </head>
     <body>
-      <h1>🚀 Wiki Application</h1>
-      <div class="nav">
-        <a href="/">Home</a>
-        <a href="/pages">View Pages</a>
-        <a href="/health">Health Check</a>
-      </div>
-      <div class="info">
-        <p><strong>Welcome to the Wiki Application!</strong></p>
-        <p>This is a simple wiki application running in Docker with PostgreSQL.</p>
-        <p>Database: Connected to ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}</p>
+      <div class="app-container">
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <a href="/" class="logo">
+              <span class="logo-icon">📚</span>
+              <span>Wiki</span>
+            </a>
+          </div>
+          <nav>
+            <div class="nav-section">
+              <div class="nav-title">Navigation</div>
+              <a href="/" class="nav-item active">
+                <span class="nav-item-icon">🏠</span>
+                <span>Home</span>
+              </a>
+              <a href="/pages" class="nav-item">
+                <span class="nav-item-icon">📄</span>
+                <span>Pages</span>
+              </a>
+              <a href="/health" class="nav-item">
+                <span class="nav-item-icon">💚</span>
+                <span>System Health</span>
+              </a>
+            </div>
+          </nav>
+        </aside>
+        
+        <main class="main-content">
+          <div class="content-header">
+            <h1>Welcome to Wiki</h1>
+            <p>A modern knowledge base for your team</p>
+          </div>
+          
+          <div class="content-body">
+            <div class="info-card card">
+              <h2 style="margin-bottom: 12px; font-size: 20px;">🚀 Getting Started</h2>
+              <p><strong>Welcome!</strong> This is a modern wiki application running with Docker and PostgreSQL.</p>
+              <p style="margin-top: 12px;">Create your first page to get started documenting your knowledge.</p>
+              <p style="margin-top: 16px; font-size: 14px; opacity: 0.8;">
+                <strong>Database:</strong> Connected to ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}
+              </p>
+            </div>
+            
+            <div class="card">
+              <h2 style="margin-bottom: 16px; font-size: 20px;">✨ Quick Actions</h2>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <a href="/pages" class="btn btn-primary">
+                  <span>📄</span>
+                  <span>View All Pages</span>
+                </a>
+                <a href="/pages#create" class="btn btn-secondary">
+                  <span>➕</span>
+                  <span>Create New Page</span>
+                </a>
+              </div>
+            </div>
+            
+            <div class="card">
+              <h3 style="margin-bottom: 12px; font-size: 18px;">📖 About</h3>
+              <p style="color: var(--text-secondary); line-height: 1.6;">
+                This wiki is designed to help teams document and share knowledge efficiently. 
+                Create pages, organize information, and collaborate seamlessly with a clean, 
+                modern interface inspired by the best knowledge management tools.
+              </p>
+            </div>
+          </div>
+        </main>
       </div>
     </body>
     </html>
@@ -91,27 +144,147 @@ app.get('/', (req, res) => {
 });
 
 app.get('/health', async (req, res) => {
-  if (!pool) {
-    return res.status(503).json({ 
-      status: 'unhealthy', 
-      database: 'disconnected' 
-    });
+  // Check if requesting JSON (API endpoint)
+  if (req.headers.accept && req.headers.accept.includes('application/json')) {
+    if (!pool) {
+      return res.status(503).json({ 
+        status: 'unhealthy', 
+        database: 'disconnected' 
+      });
+    }
+    
+    try {
+      const result = await pool.query('SELECT NOW()');
+      res.json({ 
+        status: 'healthy', 
+        database: 'connected',
+        timestamp: result.rows[0].now 
+      });
+    } catch (err) {
+      res.status(503).json({ 
+        status: 'unhealthy', 
+        database: 'error',
+        error: err.message 
+      });
+    }
+    return;
   }
   
-  try {
-    const result = await pool.query('SELECT NOW()');
-    res.json({ 
-      status: 'healthy', 
-      database: 'connected',
-      timestamp: result.rows[0].now 
-    });
-  } catch (err) {
-    res.status(503).json({ 
-      status: 'unhealthy', 
-      database: 'error',
-      error: err.message 
-    });
+  // Return HTML page
+  let dbStatus = 'disconnected';
+  let dbTimestamp = null;
+  let dbError = null;
+  
+  if (pool) {
+    try {
+      const result = await pool.query('SELECT NOW()');
+      dbStatus = 'connected';
+      dbTimestamp = result.rows[0].now;
+    } catch (err) {
+      dbStatus = 'error';
+      dbError = err.message;
+    }
   }
+  
+  const isHealthy = dbStatus === 'connected';
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Wiki - System Health</title>
+      <link rel="stylesheet" href="/style.css">
+    </head>
+    <body>
+      <div class="app-container">
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <a href="/" class="logo">
+              <span class="logo-icon">📚</span>
+              <span>Wiki</span>
+            </a>
+          </div>
+          <nav>
+            <div class="nav-section">
+              <div class="nav-title">Navigation</div>
+              <a href="/" class="nav-item">
+                <span class="nav-item-icon">🏠</span>
+                <span>Home</span>
+              </a>
+              <a href="/pages" class="nav-item">
+                <span class="nav-item-icon">📄</span>
+                <span>Pages</span>
+              </a>
+              <a href="/health" class="nav-item active">
+                <span class="nav-item-icon">💚</span>
+                <span>System Health</span>
+              </a>
+            </div>
+          </nav>
+        </aside>
+        
+        <main class="main-content">
+          <div class="content-header">
+            <h1>System Health</h1>
+            <p>Monitor the status of your wiki application</p>
+          </div>
+          
+          <div class="content-body">
+            <div class="card">
+              <h2 style="margin-bottom: 20px; font-size: 20px;">Overall Status</h2>
+              <div class="status-badge ${isHealthy ? 'success' : 'error'}">
+                <span>${isHealthy ? '✓' : '✗'}</span>
+                <span>${isHealthy ? 'System Healthy' : 'System Unhealthy'}</span>
+              </div>
+            </div>
+            
+            <div class="health-grid">
+              <div class="health-card">
+                <h3>Database</h3>
+                <div class="health-value" style="color: ${dbStatus === 'connected' ? 'var(--success)' : '#EF4444'};">
+                  ${dbStatus === 'connected' ? '✓ Connected' : '✗ ' + dbStatus}
+                </div>
+                ${dbTimestamp ? `<p style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">Last check: ${new Date(dbTimestamp).toLocaleString()}</p>` : ''}
+                ${dbError ? `<p style="margin-top: 8px; font-size: 13px; color: #EF4444;">Error: ${escapeHtml(dbError)}</p>` : ''}
+              </div>
+              
+              <div class="health-card">
+                <h3>Server</h3>
+                <div class="health-value" style="color: var(--success);">
+                  ✓ Running
+                </div>
+                <p style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
+                  Port: ${port}
+                </p>
+              </div>
+              
+              <div class="health-card">
+                <h3>Database Config</h3>
+                <div style="margin-top: 12px; font-size: 14px; color: var(--text-secondary);">
+                  <div style="margin-bottom: 6px;"><strong>Host:</strong> ${dbConfig.host}</div>
+                  <div style="margin-bottom: 6px;"><strong>Port:</strong> ${dbConfig.port}</div>
+                  <div><strong>Database:</strong> ${dbConfig.database}</div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="card">
+              <h3 style="margin-bottom: 12px; font-size: 18px;">API Endpoint</h3>
+              <p style="color: var(--text-secondary); margin-bottom: 12px;">
+                Access the health check as JSON by setting the Accept header to application/json
+              </p>
+              <code style="background: var(--background-secondary); padding: 8px 12px; border-radius: 4px; display: block; font-size: 14px;">
+                GET /health
+              </code>
+            </div>
+          </div>
+        </main>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 app.get('/pages', async (req, res) => {
@@ -124,58 +297,114 @@ app.get('/pages', async (req, res) => {
     
     let html = `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
-        <title>Wiki Pages</title>
-        <style>
-          body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 0 20px; }
-          h1 { color: #333; }
-          .nav { margin: 20px 0; }
-          .nav a { margin-right: 15px; text-decoration: none; color: #007bff; }
-          .nav a:hover { text-decoration: underline; }
-          .page { background: #f9f9f9; padding: 15px; margin: 10px 0; border-radius: 5px; }
-          .page h3 { margin-top: 0; }
-          form { background: #f0f0f0; padding: 20px; border-radius: 5px; margin: 20px 0; }
-          input, textarea { width: 100%; padding: 8px; margin: 5px 0 15px 0; box-sizing: border-box; }
-          button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
-          button:hover { background: #0056b3; }
-        </style>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Wiki - Pages</title>
+        <link rel="stylesheet" href="/style.css">
       </head>
       <body>
-        <h1>📚 Wiki Pages</h1>
-        <div class="nav">
-          <a href="/">Home</a>
-          <a href="/pages">View Pages</a>
-          <a href="/health">Health Check</a>
-        </div>
-        
-        <h2>Create New Page</h2>
-        <form action="/pages" method="POST">
-          <label>Title:</label>
-          <input type="text" name="title" required>
-          <label>Content:</label>
-          <textarea name="content" rows="5" required></textarea>
-          <button type="submit">Create Page</button>
-        </form>
-        
-        <h2>Existing Pages (${result.rows.length})</h2>
+        <div class="app-container">
+          <aside class="sidebar">
+            <div class="sidebar-header">
+              <a href="/" class="logo">
+                <span class="logo-icon">📚</span>
+                <span>Wiki</span>
+              </a>
+            </div>
+            <nav>
+              <div class="nav-section">
+                <div class="nav-title">Navigation</div>
+                <a href="/" class="nav-item">
+                  <span class="nav-item-icon">🏠</span>
+                  <span>Home</span>
+                </a>
+                <a href="/pages" class="nav-item active">
+                  <span class="nav-item-icon">📄</span>
+                  <span>Pages</span>
+                </a>
+                <a href="/health" class="nav-item">
+                  <span class="nav-item-icon">💚</span>
+                  <span>System Health</span>
+                </a>
+              </div>
+            </nav>
+          </aside>
+          
+          <main class="main-content">
+            <div class="content-header">
+              <h1>All Pages</h1>
+              <p>${result.rows.length} page${result.rows.length !== 1 ? 's' : ''} in your wiki</p>
+            </div>
+            
+            <div class="content-body">
+              <div class="form-section" id="create">
+                <h2>✍️ Create New Page</h2>
+                <form action="/pages" method="POST">
+                  <div class="form-group">
+                    <label for="title">Page Title</label>
+                    <input type="text" id="title" name="title" placeholder="Enter a descriptive title..." required>
+                  </div>
+                  <div class="form-group">
+                    <label for="content">Content</label>
+                    <textarea id="content" name="content" placeholder="Write your content here..." required></textarea>
+                  </div>
+                  <button type="submit" class="btn btn-primary">
+                    <span>💾</span>
+                    <span>Create Page</span>
+                  </button>
+                </form>
+              </div>
     `;
     
     if (result.rows.length === 0) {
-      html += '<p>No pages yet. Create your first page above!</p>';
+      html += `
+        <div class="empty-state">
+          <div class="empty-state-icon">📄</div>
+          <h3>No pages yet</h3>
+          <p>Create your first page above to get started!</p>
+        </div>
+      `;
     } else {
+      html += '<div class="pages-grid">';
       result.rows.forEach(page => {
+        const createdDate = new Date(page.created_at);
+        const formattedDate = createdDate.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
         html += `
-          <div class="page">
-            <h3>${escapeHtml(page.title)}</h3>
+          <div class="page-card">
+            <h3>
+              <span class="page-icon">📄</span>
+              ${escapeHtml(page.title)}
+            </h3>
             <p>${escapeHtml(page.content)}</p>
-            <small>Created: ${new Date(page.created_at).toLocaleString()}</small>
+            <div class="page-meta">
+              <div class="page-meta-item">
+                <span>🕒</span>
+                <span>${formattedDate}</span>
+              </div>
+              <div class="page-meta-item">
+                <span>📝</span>
+                <span>${page.content.length} characters</span>
+              </div>
+            </div>
           </div>
         `;
       });
+      html += '</div>';
     }
     
     html += `
+            </div>
+          </main>
+        </div>
       </body>
       </html>
     `;
