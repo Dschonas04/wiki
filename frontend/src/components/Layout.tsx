@@ -12,6 +12,7 @@ import {
   ScrollText,
   LogOut,
   Shield,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -29,6 +30,7 @@ export default function Layout() {
     { to: '/users', icon: Users, label: 'Users', end: true, show: isAdmin },
     { to: '/audit', icon: ScrollText, label: 'Audit Log', end: true, show: isAdmin },
     { to: '/health', icon: Activity, label: 'System Health', end: true, show: hasPermission('health.read') },
+    { to: '/change-password', icon: Lock, label: 'Change Password', end: true, show: user?.authSource === 'local' },
   ];
 
   const handleLogout = async () => {

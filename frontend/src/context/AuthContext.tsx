@@ -6,6 +6,7 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   hasPermission: (...perms: string[]) => boolean;
   isAdmin: boolean;
   isEditor: boolean;
@@ -25,6 +26,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const me = await api.getMe();
+      setUser(me);
+    } catch {
+      setUser(null);
     }
   }, []);
 
@@ -62,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isEditor = user?.role === 'editor' || isAdmin;
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasPermission, isAdmin, isEditor }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, hasPermission, isAdmin, isEditor }}>
       {children}
     </AuthContext.Provider>
   );

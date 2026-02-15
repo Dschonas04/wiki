@@ -33,6 +33,7 @@ export interface User {
   authSource: 'local' | 'ldap';
   lastLogin?: string;
   createdAt: string;
+  mustChangePassword?: boolean;
   permissions: string[];
 }
 
@@ -110,9 +111,11 @@ async function request<T>(method: string, path: string, data?: unknown): Promise
 export const api = {
   // Auth
   login: (username: string, password: string) =>
-    request<{ user: User }>('POST', '/auth/login', { username, password }),
+    request<{ user: User; mustChangePassword?: boolean }>('POST', '/auth/login', { username, password }),
   logout: () => request<{ message: string }>('POST', '/auth/logout'),
   getMe: () => request<User>('GET', '/auth/me'),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ message: string }>('POST', '/auth/change-password', { currentPassword, newPassword }),
 
   // Pages
   getPages: () => request<WikiPage[]>('GET', '/pages'),
@@ -138,5 +141,5 @@ export const api = {
     request<AuditResponse>('GET', `/audit?limit=${limit}&offset=${offset}`),
 
   // Health
-  getHealth: () => request<HealthData>('GET', '/health'),
+  getHealth: () => request<HealthData>('GET', '/health/details'),
 };

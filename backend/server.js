@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const { Pool } = require('pg');
 const helmet = require('helmet');
@@ -207,16 +208,31 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
         `);
       }
 
+      // Migration: add must_change_password column
+      await client.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='must_change_password') THEN
+            ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT false;
+          END IF;
+        END; $$
+      `);
+
       // Create default admin user if no users exist
       const userCount = await client.query('SELECT COUNT(*) FROM users');
       if (parseInt(userCount.rows[0].count) === 0) {
-        const hash = await bcrypt.hash('admin', BCRYPT_ROUNDS);
+        const defaultPassword = crypto.randomBytes(16).toString('base64url');
+        const hash = await bcrypt.hash(defaultPassword, BCRYPT_ROUNDS);
         await client.query(
-          `INSERT INTO users (username, password_hash, display_name, email, role, auth_source)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          ['admin', hash, 'Administrator', 'admin@wiki.local', 'admin', 'local']
+          `INSERT INTO users (username, password_hash, display_name, email, role, auth_source, must_change_password)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          ['admin', hash, 'Administrator', 'admin@wiki.local', 'admin', 'local', true]
         );
-        console.log('Default admin created → admin / admin');
+        console.log('╔══════════════════════════════════════════════════╗');
+        console.log('║  DEFAULT ADMIN CREATED                           ║');
+        console.log('║  Username: admin                                 ║');
+        console.log(`║  Password: ${defaultPassword.padEnd(37)}║`);
+        console.log('║  ⚠  CHANGE THIS PASSWORD AFTER FIRST LOGIN!     ║');
+        console.log('╚══════════════════════════════════════════════════╝');
       }
 
       // Indexes
@@ -349,8 +365,8 @@ function signToken(user) {
 function setTokenCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: false, // true behind TLS
-    sameSite: 'lax',
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
     maxAge: 8 * 60 * 60 * 1000,
     path: '/',
   });
@@ -358,13 +374,28 @@ function setTokenCookie(res, token) {
 
 // ==================== AUTH MIDDLEWARE ====================
 
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: 'Authentication required' });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verify user still exists and is active (token revocation)
+    if (pool) {
+      const check = await pool.query(
+        'SELECT id, username, role, is_active, must_change_password FROM users WHERE id = $1',
+        [decoded.id]
+      );
+      if (check.rows.length === 0 || !check.rows[0].is_active) {
+        res.clearCookie(COOKIE_NAME);
+        return res.status(401).json({ error: 'Account disabled or deleted.' });
+      }
+      // Use latest role from DB (not stale JWT)
+      decoded.role = check.rows[0].role;
+      decoded.mustChangePassword = check.rows[0].must_change_password;
+    }
+    req.user = decoded;
     next();
-  } catch {
+  } catch (err) {
     res.clearCookie(COOKIE_NAME);
     return res.status(401).json({ error: 'Session expired. Please log in again.' });
   }
@@ -383,6 +414,17 @@ function requirePermission(...perms) {
 }
 
 // ==================== HELPERS ====================
+
+function validatePassword(password) {
+  const errors = [];
+  if (!password || password.length < 8) errors.push('Password must be at least 8 characters.');
+  else {
+    if (!/[a-zA-Z]/.test(password)) errors.push('Password must contain at least one letter.');
+    if (!/[0-9]/.test(password)) errors.push('Password must contain at least one number.');
+    if (!/[^a-zA-Z0-9]/.test(password)) errors.push('Password must contain at least one special character.');
+  }
+  return errors;
+}
 
 function validatePageInput(title, content) {
   const errors = [];
@@ -424,6 +466,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
           RETURNING *`,
           [cleanUser, ldapUser.displayName, ldapUser.email, ldapUser.role]);
         const user = upsert.rows[0];
+        user.must_change_password = false; // LDAP users don't need forced change
         const token = signToken(user);
         setTokenCookie(res, token);
         await auditLog(user.id, user.username, 'login', 'auth', null, { source: 'ldap' }, getIp(req));
@@ -452,7 +495,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const token = signToken(user);
     setTokenCookie(res, token);
     await auditLog(user.id, user.username, 'login', 'auth', null, { source: 'local' }, getIp(req));
-    res.json({ user: formatUser(user) });
+    res.json({ user: formatUser(user), mustChangePassword: !!user.must_change_password });
   } catch (err) {
     console.error('Login error:', err.message);
     res.status(500).json({ error: 'Login failed' });
@@ -468,7 +511,7 @@ app.post('/api/auth/logout', authenticate, async (req, res) => {
 app.get('/api/auth/me', authenticate, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, username, display_name, email, role, auth_source, last_login, created_at FROM users WHERE id = $1',
+      'SELECT id, username, display_name, email, role, auth_source, last_login, created_at, must_change_password FROM users WHERE id = $1',
       [req.user.id]
     );
     if (result.rows.length === 0) {
@@ -482,6 +525,41 @@ app.get('/api/auth/me', authenticate, async (req, res) => {
   }
 });
 
+// Password change
+app.post('/api/auth/change-password', authenticate, writeLimiter, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new password are required.' });
+
+  const pwErrors = validatePassword(newPassword);
+  if (pwErrors.length > 0) return res.status(400).json({ error: pwErrors.join(' '), errors: pwErrors });
+
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE id = $1 AND auth_source = $2', [req.user.id, 'local']);
+    if (result.rows.length === 0) return res.status(400).json({ error: 'Password change is only available for local accounts.' });
+
+    const user = result.rows[0];
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) {
+      await auditLog(user.id, user.username, 'password_change_failed', 'auth', null, { reason: 'wrong current password' }, getIp(req));
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+
+    const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await pool.query('UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2', [hash, user.id]);
+    await auditLog(user.id, user.username, 'password_changed', 'auth', null, null, getIp(req));
+
+    // Issue new token with updated state
+    const updated = await pool.query('SELECT * FROM users WHERE id = $1', [user.id]);
+    const token = signToken(updated.rows[0]);
+    setTokenCookie(res, token);
+
+    res.json({ message: 'Password changed successfully.' });
+  } catch (err) {
+    console.error('Password change error:', err.message);
+    res.status(500).json({ error: 'Failed to change password.' });
+  }
+});
+
 function formatUser(u) {
   return {
     id: u.id,
@@ -492,6 +570,7 @@ function formatUser(u) {
     authSource: u.auth_source,
     lastLogin: u.last_login,
     createdAt: u.created_at,
+    mustChangePassword: u.must_change_password || false,
     permissions: PERMISSIONS[u.role] || [],
   };
 }
@@ -519,7 +598,7 @@ app.post('/api/users', authenticate, requirePermission('users.manage'), writeLim
   const { username, password, displayName, email, role } = req.body;
   const errors = [];
   if (!username || !username.trim()) errors.push('Username is required.');
-  if (!password || password.length < 6) errors.push('Password must be at least 6 characters.');
+  errors.push(...validatePassword(password));
   if (!['admin', 'editor', 'viewer'].includes(role)) errors.push('Invalid role.');
   if (errors.length > 0) return res.status(400).json({ error: errors.join(' '), errors });
   try {
@@ -600,22 +679,36 @@ app.get('/api/audit', authenticate, requirePermission('audit.read'), async (req,
 
 // ==================== HEALTH ====================
 
+// Public health check — minimal info (for Docker healthcheck / load balancers)
 app.get('/api/health', async (req, res) => {
+  if (!pool) return res.status(503).json({ status: 'unhealthy' });
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'healthy' });
+  } catch {
+    res.status(503).json({ status: 'unhealthy' });
+  }
+});
+
+// Detailed health — requires authentication
+app.get('/api/health/details', authenticate, requirePermission('health.read'), async (req, res) => {
   if (!pool) return res.status(503).json({ status: 'unhealthy', database: 'disconnected' });
   try {
     const result = await pool.query('SELECT NOW()');
+    const userCount = await pool.query('SELECT COUNT(*) FROM users');
+    const pageCount = await pool.query('SELECT COUNT(*) FROM wiki_pages');
     res.json({
       status: 'healthy',
       database: 'connected',
       ldap: LDAP_ENABLED ? 'enabled' : 'disabled',
       rbac: 'active',
       roles: Object.keys(PERMISSIONS),
+      counts: { users: parseInt(userCount.rows[0].count), pages: parseInt(pageCount.rows[0].count) },
       timestamp: result.rows[0].now,
-      nodeVersion: process.version,
-      environment: isProduction ? 'production' : 'development',
+      uptime: Math.floor(process.uptime()),
     });
   } catch (err) {
-    res.status(503).json({ status: 'unhealthy', database: 'error', error: err.message });
+    res.status(503).json({ status: 'unhealthy', database: 'error' });
   }
 });
 

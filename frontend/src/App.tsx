@@ -11,6 +11,7 @@ import Health from './pages/Health';
 import Login from './pages/Login';
 import UsersPage from './pages/Users';
 import AuditLog from './pages/AuditLog';
+import ChangePassword from './pages/ChangePassword';
 import NotFound from './pages/NotFound';
 import Loading from './components/Loading';
 
@@ -38,6 +39,15 @@ function AppRoutes() {
     );
   }
 
+  // Force password change if required
+  if (user.mustChangePassword) {
+    return (
+      <Routes>
+        <Route path="*" element={<ChangePassword forced />} />
+      </Routes>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
@@ -50,6 +60,7 @@ function AppRoutes() {
         <Route path="/users" element={<RequireAuth permission="users.read"><UsersPage /></RequireAuth>} />
         <Route path="/audit" element={<RequireAuth permission="audit.read"><AuditLog /></RequireAuth>} />
         <Route path="/health" element={<RequireAuth permission="health.read"><Health /></RequireAuth>} />
+        <Route path="/change-password" element={<ChangePassword />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

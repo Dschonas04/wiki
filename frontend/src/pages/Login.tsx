@@ -79,7 +79,7 @@ export default function Login() {
         </form>
 
         <div className="login-footer">
-          <p>Default: <strong>admin</strong> / <strong>admin</strong></p>
+          <p>Contact your administrator for credentials</p>
         </div>
       </div>
     </div>
