@@ -2091,6 +2091,68 @@ button {
   background: var(--c-bg-hover);
 }
 
+/* ── Editor Tag Picker (inline in forms) ─── */
+.editor-tags-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.editor-tags-bar .tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.tag-remove:hover {
+  opacity: 1;
+}
+
+.editor-tag-picker {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-top: 6px;
+  max-width: 420px;
+}
+
+.tag-create-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.tag-create-row input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-size: 0.85rem;
+}
+
+.tag-create-row .btn-sm {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
 .tag-picker-item.selected {
   background: color-mix(in srgb, var(--tag-color, #6366f1) 10%, transparent);
 }

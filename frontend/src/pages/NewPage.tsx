@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Save, X, Code, FileText } from 'lucide-react';
+import { Save, X, Code, FileText, Tag } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { api, type WikiPage } from '../api/client';
+import { api, type WikiPage, type Tag as TagType } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageHeader from '../components/PageHeader';
 import EditorToolbar from '../components/EditorToolbar';
@@ -16,12 +16,36 @@ export default function NewPage() {
   const [contentType, setContentType] = useState<'markdown' | 'html'>('markdown');
   const [parentId, setParentId] = useState<number | null>(null);
   const [allPages, setAllPages] = useState<WikiPage[]>([]);
+  const [allTags, setAllTags] = useState<TagType[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [showTagPicker, setShowTagPicker] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
   const [saving, setSaving] = useState(false);
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     api.getPages().then(setAllPages).catch(() => {});
+    api.getTags().then(setAllTags).catch(() => {});
   }, []);
+
+  const toggleTag = (tagId: number) => {
+    setSelectedTagIds(prev =>
+      prev.includes(tagId) ? prev.filter(id => id !== tagId) : [...prev, tagId]
+    );
+  };
+
+  const createAndSelectTag = async () => {
+    const name = newTagName.trim();
+    if (!name) return;
+    try {
+      const tag = await api.createTag(name);
+      setAllTags(prev => [...prev, tag]);
+      setSelectedTagIds(prev => [...prev, tag.id]);
+      setNewTagName('');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
 
   const previewHtml = contentType === 'markdown'
     ? DOMPurify.sanitize(marked.parse(content || '') as string)
@@ -39,6 +63,9 @@ export default function NewPage() {
         parentId,
         contentType,
       });
+      if (selectedTagIds.length > 0) {
+        await api.setPageTags(page.id, selectedTagIds).catch(() => {});
+      }
       showToast('Page created!', 'success');
       navigate(`/pages/${page.id}`);
     } catch (err: any) {
@@ -101,6 +128,57 @@ export default function NewPage() {
                 </button>
               </div>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Tags</label>
+            <div className="editor-tags-bar">
+              {selectedTagIds.map(tagId => {
+                const tag = allTags.find(t => t.id === tagId);
+                if (!tag) return null;
+                return (
+                  <span key={tag.id} className="tag-badge" style={{ '--tag-color': tag.color } as React.CSSProperties}>
+                    {tag.name}
+                    <button type="button" className="tag-remove" onClick={() => toggleTag(tag.id)}>×</button>
+                  </span>
+                );
+              })}
+              <button type="button" className="tag-add-btn" onClick={() => setShowTagPicker(!showTagPicker)}>
+                <Tag size={14} /> {selectedTagIds.length === 0 ? 'Add tags' : '+'}
+              </button>
+            </div>
+            {showTagPicker && (
+              <div className="editor-tag-picker">
+                <div className="tag-picker-list">
+                  {allTags.map(tag => {
+                    const isSelected = selectedTagIds.includes(tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        className={`tag-picker-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => toggleTag(tag.id)}
+                        style={{ '--tag-color': tag.color } as React.CSSProperties}
+                      >
+                        <span className="tag-dot" />
+                        <span>{tag.name}</span>
+                        {isSelected && <span className="tag-check">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="tag-create-row">
+                  <input
+                    type="text"
+                    placeholder="New tag name…"
+                    value={newTagName}
+                    onChange={e => setNewTagName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndSelectTag(); } }}
+                  />
+                  <button type="button" className="btn btn-sm btn-primary" onClick={createAndSelectTag} disabled={!newTagName.trim()}>Create</button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="editor-grid">
