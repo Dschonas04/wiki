@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "dompurify": "^3.0.8",
+    "html2pdf.js": "^0.10.2",
     "lucide-react": "^0.344.0",
     "marked": "^12.0.2",
     "react": "^18.3.1",

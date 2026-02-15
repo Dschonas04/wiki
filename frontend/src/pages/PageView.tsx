@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag } from 'lucide-react';
+import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType } from '../api/client';
@@ -61,6 +61,29 @@ export default function PageView() {
       const updated = await api.setPageTags(id, newIds);
       setTags(updated);
     } catch { showToast('Failed to update tags', 'error'); }
+  };
+
+  const handlePdfExport = async () => {
+    if (!page) return;
+    const element = document.querySelector('.page-view-content') as HTMLElement;
+    if (!element) return;
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      await html2pdf()
+        .set({
+          margin: [15, 15, 15, 15],
+          filename: `${page.title}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        })
+        .from(element)
+        .save();
+      showToast('PDF exported', 'success');
+    } catch {
+      showToast('PDF export failed', 'error');
+    }
   };
 
   const handleDelete = async () => {
@@ -146,6 +169,10 @@ export default function PageView() {
               <Download size={16} />
               <span>Export</span>
             </a>
+            <button className="btn btn-secondary" onClick={handlePdfExport} title="Als PDF exportieren">
+              <FileText size={16} />
+              <span>PDF</span>
+            </button>
             {canDelete && (
               <button className="btn btn-danger" onClick={handleDelete}>
                 <Trash2 size={16} />

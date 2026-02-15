@@ -16,7 +16,7 @@ import AuditLog from './pages/AuditLog';
 import ChangePassword from './pages/ChangePassword';
 import NotFound from './pages/NotFound';
 import Loading from './components/Loading';
-
+import CookieBanner from './components/CookieBanner';
 function RequireAuth({ children, permission }: { children: JSX.Element; permission?: string }) {
   const { user, loading, hasPermission } = useAuth();
   if (loading) return <div className="content-body"><Loading /></div>;
@@ -76,6 +76,7 @@ export default function App() {
     <ToastProvider>
       <AuthProvider>
         <AppRoutes />
+        <CookieBanner />
       </AuthProvider>
     </ToastProvider>
   );

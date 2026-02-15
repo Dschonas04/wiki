@@ -6,6 +6,7 @@ services:
     container_name: wiki-frontend
     restart: unless-stopped
     ports:
+      - "8443:443"
       - "8080:80"
     depends_on:
       wiki:
@@ -13,7 +14,7 @@ services:
     networks:
       - wiki-network
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:80/healthz || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -40,6 +41,7 @@ services:
       LDAP_SEARCH_BASE: ${LDAP_SEARCH_BASE}
       LDAP_SEARCH_FILTER: ${LDAP_SEARCH_FILTER}
       LDAP_GROUP_BASE: ${LDAP_GROUP_BASE}
+      COOKIE_SECURE: 'true'
     depends_on:
       db:
         condition: service_healthy
