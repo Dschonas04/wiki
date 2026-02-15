@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User, Download, ChevronRight } from 'lucide-react';
+import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User, Download, ChevronRight, Upload } from 'lucide-react';
 import { api, type WikiPage } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import EmptyState from '../components/EmptyState';
+import ImportDialog from '../components/ImportDialog';
 
 export default function Pages() {
   const [pages, setPages] = useState<WikiPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [showImport, setShowImport] = useState(false);
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
   const canCreate = hasPermission('pages.create');
@@ -109,6 +111,10 @@ export default function Pages() {
         subtitle={`${pages.length} page${pages.length !== 1 ? 's' : ''} in your wiki`}
         actions={
           <div className="btn-row">
+            <button className="btn btn-secondary" onClick={() => setShowImport(true)}>
+              <Upload size={16} />
+              <span>Import</span>
+            </button>
             <a href={api.exportAll()} className="btn btn-secondary" download>
               <Download size={16} />
               <span>Export All</span>
@@ -217,6 +223,13 @@ export default function Pages() {
           </div>
         )}
       </div>
+
+      {showImport && (
+        <ImportDialog
+          onClose={() => setShowImport(false)}
+          onImported={() => { setShowImport(false); loadPages(); }}
+        />
+      )}
     </>
   );
 }

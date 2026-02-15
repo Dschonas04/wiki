@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Save, X, Code, FileText } from 'lucide-react';
 import DOMPurify from 'dompurify';
@@ -7,6 +7,7 @@ import { api, type WikiPage } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
+import EditorToolbar from '../components/EditorToolbar';
 
 export default function EditPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +21,7 @@ export default function EditPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   const previewHtml = contentType === 'markdown'
     ? DOMPurify.sanitize(marked.parse(content || '') as string)
@@ -142,7 +144,9 @@ export default function EditPage() {
           <div className="editor-grid">
             <div className="form-group">
               <label htmlFor="content">Content ({contentType === 'markdown' ? 'Markdown' : 'HTML'})</label>
+              <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
               <textarea
+                ref={contentRef}
                 id="content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}

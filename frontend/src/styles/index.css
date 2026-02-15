@@ -2137,3 +2137,288 @@ button {
   }
   .cookie-banner-icon { display: none; }
 }
+
+/* ── Editor Toolbar ──────────────────── */
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--c-bg-secondary);
+  border: 1px solid var(--c-border);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+}
+
+.editor-toolbar + textarea {
+  border-radius: 0 0 12px 12px !important;
+}
+
+.editor-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.editor-toolbar-btn:hover {
+  background: var(--c-bg-hover);
+  color: var(--c-text);
+}
+
+.toolbar-text {
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.editor-toolbar-sep {
+  width: 1px;
+  height: 24px;
+  margin: 4px 4px;
+  background: var(--c-border);
+  align-self: center;
+}
+
+/* ── Modal / Dialog ──────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(3px);
+  animation: modal-fade-in 0.2s;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes modal-scale-in {
+  from { transform: scale(0.95); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+.modal-dialog {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 18px;
+  width: 500px;
+  max-width: 92vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+  animation: modal-scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.modal-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.modal-body {
+  padding: 20px 22px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px;
+  border-top: 1px solid var(--c-border);
+}
+
+/* ── Share Dialog ────────────────────── */
+.share-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.share-select {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-size: 0.85rem;
+}
+
+.share-perm-select {
+  width: 90px;
+  padding: 8px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-size: 0.85rem;
+}
+
+.share-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.share-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: background 0.15s;
+}
+
+.share-item:hover {
+  background: var(--c-bg-hover);
+}
+
+.share-item-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.share-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+.share-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.share-meta {
+  font-size: 0.78rem;
+  color: var(--c-text-muted);
+}
+
+/* ── Import Dialog ───────────────────── */
+.import-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 36px 20px;
+  border: 2px dashed var(--c-border);
+  border-radius: 14px;
+  cursor: pointer;
+  color: var(--c-text-muted);
+  transition: all 0.2s;
+  margin-bottom: 16px;
+}
+
+.import-dropzone:hover,
+.import-dropzone.dragover {
+  border-color: var(--c-primary);
+  background: color-mix(in srgb, var(--c-primary) 5%, transparent);
+  color: var(--c-primary);
+}
+
+.import-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.import-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--c-bg-secondary);
+  font-size: 0.85rem;
+}
+
+.import-file-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.import-file-type {
+  font-size: 0.75rem;
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+}
+
+.import-file-status {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.import-file-status.success {
+  color: #22c55e;
+}
+
+.import-file-status.error {
+  color: #ef4444;
+}
+
+/* ── Badge Share ─────────────────────── */
+.badge-share {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--c-primary) 15%, transparent);
+  color: var(--c-primary);
+  margin-left: 8px;
+}
+
+@media (max-width: 640px) {
+  .share-add-row {
+    flex-direction: column;
+  }
+  .share-perm-select {
+    width: 100%;
+  }
+  .editor-toolbar {
+    gap: 1px;
+    padding: 4px 6px;
+  }
+  .editor-toolbar-btn {
+    min-width: 28px;
+    height: 28px;
+  }
+}

@@ -16,6 +16,7 @@ import {
   Moon,
   Sun,
   Star,
+  Share2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../hooks/useTheme';
@@ -32,6 +33,7 @@ export default function Layout() {
     { to: '/', icon: Home, label: 'Home', end: true, show: true },
     { to: '/pages', icon: FileText, label: 'Pages', end: true, show: hasPermission('pages.read') },
     { to: '/favorites', icon: Star, label: 'Favorites', end: true, show: true },
+    { to: '/shared', icon: Share2, label: 'Shared with me', end: true, show: true },
     { to: '/pages/new', icon: PlusCircle, label: 'New Page', end: true, show: hasPermission('pages.create') },
     { to: '/users', icon: Users, label: 'Users', end: true, show: isAdmin },
     { to: '/audit', icon: ScrollText, label: 'Audit Log', end: true, show: isAdmin },

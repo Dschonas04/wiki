@@ -94,6 +94,34 @@ export interface FavoritePage extends WikiPage {
   favorited_at: string;
 }
 
+export interface PageShare {
+  id: number;
+  page_id: number;
+  shared_with_user_id: number;
+  username: string;
+  display_name: string;
+  permission: string;
+  shared_by_name: string;
+  created_at: string;
+}
+
+export interface SharedPage {
+  id: number;
+  title: string;
+  content: string;
+  content_type?: string;
+  updated_at: string;
+  permission: string;
+  shared_by_name: string;
+  shared_at: string;
+}
+
+export interface UserBasic {
+  id: number;
+  username: string;
+  displayName: string;
+}
+
 const API_BASE = '/api';
 
 async function request<T>(method: string, path: string, data?: unknown): Promise<T> {
@@ -193,4 +221,14 @@ export const api = {
     request<{ favorited: boolean }>('POST', `/favorites/${pageId}`),
   checkFavorite: (pageId: number | string) =>
     request<{ favorited: boolean }>('GET', `/favorites/${pageId}/check`),
+
+  // Sharing
+  getUsersBasic: () => request<UserBasic[]>('GET', '/users/list'),
+  getPageShares: (pageId: number | string) =>
+    request<PageShare[]>('GET', `/pages/${pageId}/shares`),
+  sharePage: (pageId: number | string, userId: number, permission: string) =>
+    request<PageShare[]>('POST', `/pages/${pageId}/shares`, { userId, permission }),
+  unsharePage: (pageId: number | string, userId: number) =>
+    request<PageShare[]>('DELETE', `/pages/${pageId}/shares/${userId}`),
+  getSharedWithMe: () => request<SharedPage[]>('GET', '/shared'),
 };

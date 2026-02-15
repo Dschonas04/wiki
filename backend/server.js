@@ -319,6 +319,20 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
         )
       `);
 
+      // ===== Page Shares table =====
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS wiki_page_shares (
+          id SERIAL PRIMARY KEY,
+          page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+          shared_with_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          permission VARCHAR(20) NOT NULL DEFAULT 'read',
+          shared_by INTEGER REFERENCES users(id),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(page_id, shared_with_user_id),
+          CONSTRAINT valid_share_permission CHECK (permission IN ('read', 'edit'))
+        )
+      `);
+
       // Indexes
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)');
@@ -329,6 +343,8 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_page_tags_tag ON wiki_page_tags(tag_id)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_favorites_user ON wiki_favorites(user_id)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_favorites_page ON wiki_favorites(page_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_shares_page ON wiki_page_shares(page_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_shares_user ON wiki_page_shares(shared_with_user_id)');
 
       console.log('Database schema initialized');
       client.release();
@@ -750,6 +766,21 @@ app.delete('/api/users/:id', authenticate, requirePermission('users.manage'), wr
   } catch (err) {
     console.error('Error deleting user:', err.message);
     res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// ==================== USERS BASIC LIST ====================
+
+// Lightweight user list for share dialogs (any authenticated user)
+app.get('/api/users/list', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, display_name FROM users WHERE is_active = true ORDER BY display_name ASC'
+    );
+    res.json(result.rows.map(u => ({ id: u.id, username: u.username, displayName: u.display_name })));
+  } catch (err) {
+    console.error('Error listing users:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve users' });
   }
 });
 
@@ -1224,6 +1255,107 @@ app.get('/api/favorites/:pageId/check', authenticate, async (req, res) => {
     res.json({ favorited: result.rows.length > 0 });
   } catch (err) {
     res.status(500).json({ error: 'Failed to check favorite' });
+  }
+});
+
+// ==================== SHARING ====================
+
+// Get shares for a page
+app.get('/api/pages/:id/shares', authenticate, requirePermission('pages.read'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const result = await pool.query(`
+      SELECT s.id, s.page_id, s.shared_with_user_id, s.permission, s.created_at,
+             u.username, u.display_name,
+             sb.username AS shared_by_name
+      FROM wiki_page_shares s
+      JOIN users u ON s.shared_with_user_id = u.id
+      LEFT JOIN users sb ON s.shared_by = sb.id
+      WHERE s.page_id = $1
+      ORDER BY s.created_at DESC`, [id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error getting shares:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve shares' });
+  }
+});
+
+// Share a page with a user
+app.post('/api/pages/:id/shares', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const pageId = parseInt(req.params.id);
+  if (isNaN(pageId)) return res.status(400).json({ error: 'Invalid page ID' });
+  const { userId, permission } = req.body;
+  if (!userId) return res.status(400).json({ error: 'userId is required' });
+  if (!['read', 'edit'].includes(permission || 'read')) return res.status(400).json({ error: 'Invalid permission' });
+  try {
+    await pool.query(
+      `INSERT INTO wiki_page_shares (page_id, shared_with_user_id, permission, shared_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (page_id, shared_with_user_id) DO UPDATE SET permission = EXCLUDED.permission`,
+      [pageId, userId, permission || 'read', req.user.id]
+    );
+    await auditLog(req.user.id, req.user.username, 'share_page', 'page', pageId, { sharedWith: userId, permission }, getIp(req));
+    const result = await pool.query(`
+      SELECT s.id, s.page_id, s.shared_with_user_id, s.permission, s.created_at,
+             u.username, u.display_name,
+             sb.username AS shared_by_name
+      FROM wiki_page_shares s
+      JOIN users u ON s.shared_with_user_id = u.id
+      LEFT JOIN users sb ON s.shared_by = sb.id
+      WHERE s.page_id = $1
+      ORDER BY s.created_at DESC`, [pageId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error sharing page:', err.message);
+    res.status(500).json({ error: 'Failed to share page' });
+  }
+});
+
+// Remove share
+app.delete('/api/pages/:id/shares/:userId', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const pageId = parseInt(req.params.id);
+  const userId = parseInt(req.params.userId);
+  if (isNaN(pageId) || isNaN(userId)) return res.status(400).json({ error: 'Invalid IDs' });
+  try {
+    await pool.query('DELETE FROM wiki_page_shares WHERE page_id = $1 AND shared_with_user_id = $2', [pageId, userId]);
+    await auditLog(req.user.id, req.user.username, 'unshare_page', 'page', pageId, { removedUser: userId }, getIp(req));
+    const result = await pool.query(`
+      SELECT s.id, s.page_id, s.shared_with_user_id, s.permission, s.created_at,
+             u.username, u.display_name,
+             sb.username AS shared_by_name
+      FROM wiki_page_shares s
+      JOIN users u ON s.shared_with_user_id = u.id
+      LEFT JOIN users sb ON s.shared_by = sb.id
+      WHERE s.page_id = $1
+      ORDER BY s.created_at DESC`, [pageId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error removing share:', err.message);
+    res.status(500).json({ error: 'Failed to remove share' });
+  }
+});
+
+// Get pages shared with current user
+app.get('/api/shared', authenticate, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const result = await pool.query(`
+      SELECT p.id, p.title, p.content, p.updated_at, p.content_type,
+             s.permission, s.created_at AS shared_at,
+             sb.username AS shared_by_name
+      FROM wiki_page_shares s
+      JOIN wiki_pages p ON s.page_id = p.id
+      LEFT JOIN users sb ON s.shared_by = sb.id
+      WHERE s.shared_with_user_id = $1
+      ORDER BY s.created_at DESC`, [req.user.id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error getting shared pages:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve shared pages' });
   }
 });
 

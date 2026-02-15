@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Save, X, Code, FileText } from 'lucide-react';
 import DOMPurify from 'dompurify';
@@ -6,6 +6,7 @@ import { marked } from 'marked';
 import { api, type WikiPage } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageHeader from '../components/PageHeader';
+import EditorToolbar from '../components/EditorToolbar';
 
 export default function NewPage() {
   const navigate = useNavigate();
@@ -16,6 +17,7 @@ export default function NewPage() {
   const [parentId, setParentId] = useState<number | null>(null);
   const [allPages, setAllPages] = useState<WikiPage[]>([]);
   const [saving, setSaving] = useState(false);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     api.getPages().then(setAllPages).catch(() => {});
@@ -104,7 +106,9 @@ export default function NewPage() {
           <div className="editor-grid">
             <div className="form-group">
               <label htmlFor="content">Content ({contentType === 'markdown' ? 'Markdown' : 'HTML'})</label>
+              <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
               <textarea
+                ref={contentRef}
                 id="content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}

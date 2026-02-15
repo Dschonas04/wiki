@@ -15,6 +15,7 @@ import UsersPage from './pages/Users';
 import AuditLog from './pages/AuditLog';
 import ChangePassword from './pages/ChangePassword';
 import NotFound from './pages/NotFound';
+import SharedWithMe from './pages/SharedWithMe';
 import Loading from './components/Loading';
 import CookieBanner from './components/CookieBanner';
 function RequireAuth({ children, permission }: { children: JSX.Element; permission?: string }) {
@@ -56,6 +57,7 @@ function AppRoutes() {
       <Route element={<Layout />}>
         <Route path="/" element={<Home />} />
         <Route path="/favorites" element={<Favorites />} />
+        <Route path="/shared" element={<SharedWithMe />} />
         <Route path="/pages" element={<RequireAuth permission="pages.read"><Pages /></RequireAuth>} />
         <Route path="/pages/new" element={<RequireAuth permission="pages.create"><NewPage /></RequireAuth>} />
         <Route path="/pages/:id" element={<RequireAuth permission="pages.read"><PageView /></RequireAuth>} />

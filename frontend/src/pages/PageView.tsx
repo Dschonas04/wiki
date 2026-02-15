@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText } from 'lucide-react';
+import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType } from '../api/client';
@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
+import ShareDialog from '../components/ShareDialog';
 
 export default function PageView() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +20,7 @@ export default function PageView() {
   const [tags, setTags] = useState<TagType[]>([]);
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
   const canEdit = hasPermission('pages.edit');
@@ -173,6 +175,12 @@ export default function PageView() {
               <FileText size={16} />
               <span>PDF</span>
             </button>
+            {canEdit && (
+              <button className="btn btn-secondary" onClick={() => setShowShare(true)} title="Share">
+                <Share2 size={16} />
+                <span>Share</span>
+              </button>
+            )}
             {canDelete && (
               <button className="btn btn-danger" onClick={handleDelete}>
                 <Trash2 size={16} />
@@ -256,6 +264,10 @@ export default function PageView() {
           </Link>
         </div>
       </div>
+
+      {showShare && page && (
+        <ShareDialog pageId={page.id} pageTitle={page.title} onClose={() => setShowShare(false)} />
+      )}
     </>
   );
 }
