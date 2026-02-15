@@ -204,6 +204,9 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='parent_id') THEN
             ALTER TABLE wiki_pages ADD COLUMN parent_id INTEGER REFERENCES wiki_pages(id) ON DELETE SET NULL;
           END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='content_type') THEN
+            ALTER TABLE wiki_pages ADD COLUMN content_type VARCHAR(20) NOT NULL DEFAULT 'markdown';
+          END IF;
         END; $$
       `);
 
@@ -260,6 +263,9 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
         DO $$ BEGIN
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='must_change_password') THEN
             ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT false;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_page_versions' AND column_name='content_type') THEN
+            ALTER TABLE wiki_page_versions ADD COLUMN content_type VARCHAR(20) NOT NULL DEFAULT 'markdown';
           END IF;
         END; $$
       `);
@@ -833,6 +839,63 @@ app.get('/api/pages/:id/export', authenticate, requirePermission('pages.read'), 
   }
 });
 
+// Export full page tree as JSON (all pages with hierarchy)
+app.get('/api/pages/export-all', authenticate, requirePermission('pages.read'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const result = await pool.query(`
+      SELECT p.id, p.title, p.content, p.content_type, p.parent_id, p.created_at, p.updated_at,
+             u1.username AS created_by_name, u2.username AS updated_by_name
+      FROM wiki_pages p
+      LEFT JOIN users u1 ON p.created_by = u1.id
+      LEFT JOIN users u2 ON p.updated_by = u2.id
+      ORDER BY p.parent_id NULLS FIRST, p.title ASC`);
+    const tagsResult = await pool.query(`
+      SELECT pt.page_id, t.name, t.color
+      FROM wiki_page_tags pt
+      JOIN wiki_tags t ON pt.tag_id = t.id`);
+    const tagMap = {};
+    for (const row of tagsResult.rows) {
+      if (!tagMap[row.page_id]) tagMap[row.page_id] = [];
+      tagMap[row.page_id].push({ name: row.name, color: row.color });
+    }
+
+    const pages = result.rows.map(p => ({ ...p, tags: tagMap[p.id] || [] }));
+
+    // Build tree structure
+    const buildTree = (parentId) => {
+      return pages
+        .filter(p => p.parent_id === parentId)
+        .map(p => ({ ...p, children: buildTree(p.id) }));
+    };
+    const tree = buildTree(null);
+
+    // Generate combined markdown
+    const lines = [];
+    const renderPage = (page, depth = 0) => {
+      const prefix = '#'.repeat(Math.min(depth + 1, 6));
+      lines.push(`${prefix} ${page.title}`);
+      if (page.tags.length) lines.push(`Tags: ${page.tags.map(t => t.name).join(', ')}`);
+      lines.push('');
+      lines.push(page.content_type === 'html' ? `<!-- HTML content -->\n${page.content}` : page.content);
+      lines.push('');
+      lines.push('---');
+      lines.push('');
+      for (const child of page.children) renderPage(child, depth + 1);
+    };
+    lines.push(`# Wiki Export\n\nExported on ${new Date().toISOString()}\n\n---\n`);
+    for (const page of tree) renderPage(page);
+
+    const content = lines.join('\n');
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="wiki-export-${new Date().toISOString().split('T')[0]}.md"`);
+    res.send(content);
+  } catch (err) {
+    console.error('Error exporting all pages:', err.message);
+    res.status(500).json({ error: 'Failed to export pages' });
+  }
+});
+
 app.get('/api/pages/search', authenticate, requirePermission('pages.read'), async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   const q = (req.query.q || '').toString().trim();
@@ -899,13 +962,14 @@ app.post('/api/pages', authenticate, requirePermission('pages.create'), writeLim
   if (errors.length > 0) return res.status(400).json({ error: errors.join(' '), errors });
   try {
     const parentId = req.body.parentId ? parseInt(req.body.parentId) : null;
+    const contentType = req.body.contentType === 'html' ? 'html' : 'markdown';
     const result = await pool.query(
-      'INSERT INTO wiki_pages (title, content, created_by, updated_by, parent_id) VALUES ($1, $2, $3, $3, $4) RETURNING *',
-      [title.trim(), content.trim(), req.user.id, parentId]
+      'INSERT INTO wiki_pages (title, content, created_by, updated_by, parent_id, content_type) VALUES ($1, $2, $3, $3, $4, $5) RETURNING *',
+      [title.trim(), content.trim(), req.user.id, parentId, contentType]
     );
     await pool.query(
-      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number) VALUES ($1, $2, $3, $4, $5)',
-      [result.rows[0].id, title.trim(), content.trim(), req.user.id, 1]
+      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number, content_type) VALUES ($1, $2, $3, $4, $5, $6)',
+      [result.rows[0].id, title.trim(), content.trim(), req.user.id, 1, contentType]
     );
     await auditLog(req.user.id, req.user.username, 'create_page', 'page', result.rows[0].id, { title: title.trim() }, getIp(req));
     res.status(201).json(result.rows[0]);
@@ -932,15 +996,16 @@ app.put('/api/pages/:id', authenticate, requirePermission('pages.edit'), writeLi
       [id]
     );
     await pool.query(
-      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number) VALUES ($1, $2, $3, $4, $5)',
-      [id, current.rows[0].title, current.rows[0].content, req.user.id, parseInt(nextVersion.rows[0].next)]
+      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number, content_type) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, current.rows[0].title, current.rows[0].content, req.user.id, parseInt(nextVersion.rows[0].next), current.rows[0].content_type || 'markdown']
     );
 
     const parentId = req.body.parentId !== undefined ? (req.body.parentId ? parseInt(req.body.parentId) : null) : current.rows[0].parent_id;
     if (parentId === id) return res.status(400).json({ error: 'A page cannot be its own parent.' });
+    const contentType = req.body.contentType !== undefined ? (req.body.contentType === 'html' ? 'html' : 'markdown') : (current.rows[0].content_type || 'markdown');
     const result = await pool.query(
-      'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3, parent_id = $4 WHERE id = $5 RETURNING *',
-      [title.trim(), content.trim(), req.user.id, parentId, id]
+      'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3, parent_id = $4, content_type = $5 WHERE id = $6 RETURNING *',
+      [title.trim(), content.trim(), req.user.id, parentId, contentType, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
     await auditLog(req.user.id, req.user.username, 'update_page', 'page', id, { title: title.trim() }, getIp(req));

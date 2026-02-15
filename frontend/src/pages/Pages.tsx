@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User } from 'lucide-react';
+import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User, Download, ChevronRight } from 'lucide-react';
 import { api, type WikiPage } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
@@ -68,6 +68,9 @@ export default function Pages() {
 
   const filtered = pages;
 
+  // Build parent lookup for breadcrumbs
+  const pageMap = new Map(pages.map(p => [p.id, p]));
+
   const formatDate = (s: string) =>
     new Date(s).toLocaleDateString('de-DE', {
       year: 'numeric',
@@ -105,12 +108,18 @@ export default function Pages() {
         title="Pages"
         subtitle={`${pages.length} page${pages.length !== 1 ? 's' : ''} in your wiki`}
         actions={
-          canCreate ? (
-            <Link to="/pages/new" className="btn btn-primary">
-              <PlusCircle size={18} />
-              <span>New Page</span>
-            </Link>
-          ) : undefined
+          <div className="btn-row">
+            <a href={api.exportAll()} className="btn btn-secondary" download>
+              <Download size={16} />
+              <span>Export All</span>
+            </a>
+            {canCreate && (
+              <Link to="/pages/new" className="btn btn-primary">
+                <PlusCircle size={18} />
+                <span>New Page</span>
+              </Link>
+            )}
+          </div>
         }
       />
 
@@ -158,7 +167,13 @@ export default function Pages() {
                 <div className="page-card-header">
                   <Link to={`/pages/${page.id}`} className="page-card-title">
                     <FileText size={18} className="page-card-icon" />
+                    {page.parent_id && pageMap.get(page.parent_id) && (
+                      <span className="page-parent-crumb">
+                        {pageMap.get(page.parent_id)!.title} <ChevronRight size={12} />
+                      </span>
+                    )}
                     {page.title}
+                    {page.content_type === 'html' && <span className="badge badge-html">HTML</span>}
                   </Link>
                   <div className="page-card-actions">
                     {canEdit && (

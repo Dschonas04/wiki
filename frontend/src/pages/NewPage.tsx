@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Save, X } from 'lucide-react';
+import { Save, X, Code, FileText } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { api } from '../api/client';
+import { api, type WikiPage } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import PageHeader from '../components/PageHeader';
 
@@ -12,8 +12,18 @@ export default function NewPage() {
   const { showToast } = useToast();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [contentType, setContentType] = useState<'markdown' | 'html'>('markdown');
+  const [parentId, setParentId] = useState<number | null>(null);
+  const [allPages, setAllPages] = useState<WikiPage[]>([]);
   const [saving, setSaving] = useState(false);
-  const previewHtml = DOMPurify.sanitize(marked.parse(content || '') as string);
+
+  useEffect(() => {
+    api.getPages().then(setAllPages).catch(() => {});
+  }, []);
+
+  const previewHtml = contentType === 'markdown'
+    ? DOMPurify.sanitize(marked.parse(content || '') as string)
+    : DOMPurify.sanitize(content || '', { ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'style'], ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'target', 'controls', 'autoplay'] });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,6 +34,8 @@ export default function NewPage() {
       const page = await api.createPage({
         title: title.trim(),
         content: content.trim(),
+        parentId,
+        contentType,
       });
       showToast('Page created!', 'success');
       navigate(`/pages/${page.id}`);
@@ -53,14 +65,50 @@ export default function NewPage() {
             />
           </div>
 
+          <div className="form-row">
+            <div className="form-group" style={{ flex: 1 }}>
+              <label htmlFor="parentId">Parent Page (optional)</label>
+              <select
+                id="parentId"
+                value={parentId ?? ''}
+                onChange={(e) => setParentId(e.target.value ? parseInt(e.target.value) : null)}
+              >
+                <option value="">— No parent (top-level) —</option>
+                {allPages.map((p) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group" style={{ flex: 0 }}>
+              <label>Content Type</label>
+              <div className="content-type-toggle">
+                <button
+                  type="button"
+                  className={`toggle-btn ${contentType === 'markdown' ? 'active' : ''}`}
+                  onClick={() => setContentType('markdown')}
+                >
+                  <FileText size={14} /> Markdown
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${contentType === 'html' ? 'active' : ''}`}
+                  onClick={() => setContentType('html')}
+                >
+                  <Code size={14} /> HTML
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="editor-grid">
             <div className="form-group">
-              <label htmlFor="content">Content (Markdown)</label>
+              <label htmlFor="content">Content ({contentType === 'markdown' ? 'Markdown' : 'HTML'})</label>
               <textarea
                 id="content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="Write your content here…"
+                placeholder={contentType === 'markdown' ? 'Write your content in Markdown…' : 'Write your HTML content…'}
                 required
                 maxLength={100000}
                 rows={14}

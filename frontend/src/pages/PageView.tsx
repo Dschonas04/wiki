@@ -84,7 +84,11 @@ export default function PageView() {
       minute: '2-digit',
     });
 
-  const markdownHtml = page ? DOMPurify.sanitize(marked.parse(page.content || '') as string) : '';
+  const markdownHtml = page
+    ? page.content_type === 'html'
+      ? DOMPurify.sanitize(page.content || '', { ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'style'], ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'target', 'controls', 'autoplay'] })
+      : DOMPurify.sanitize(marked.parse(page.content || '') as string)
+    : '';
 
   if (loading) {
     return (

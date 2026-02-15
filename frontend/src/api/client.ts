@@ -2,6 +2,7 @@ export interface WikiPage {
   id: number;
   title: string;
   content: string;
+  content_type?: 'markdown' | 'html';
   parent_id?: number | null;
   children_count?: number;
   created_by_name?: string;
@@ -147,13 +148,14 @@ export const api = {
   getRecentPages: (limit = 10) => request<WikiPage[]>('GET', `/pages/recent?limit=${limit}`),
   searchPages: (q: string) => request<WikiPage[]>('GET', `/pages/search?q=${encodeURIComponent(q)}`),
   getPage: (id: number | string) => request<WikiPage>('GET', `/pages/${id}`),
-  createPage: (data: { title: string; content: string; parentId?: number | null }) =>
+  createPage: (data: { title: string; content: string; parentId?: number | null; contentType?: string }) =>
     request<WikiPage>('POST', '/pages', data),
-  updatePage: (id: number | string, data: { title: string; content: string; parentId?: number | null }) =>
+  updatePage: (id: number | string, data: { title: string; content: string; parentId?: number | null; contentType?: string }) =>
     request<WikiPage>('PUT', `/pages/${id}`, data),
   deletePage: (id: number | string) =>
     request<{ message: string; page: WikiPage }>('DELETE', `/pages/${id}`),
   exportPage: (id: number | string) => `${API_BASE}/pages/${id}/export`,
+  exportAll: () => `${API_BASE}/pages/export-all`,
   getPageVersions: (id: number | string) => request<PageVersion[]>('GET', `/pages/${id}/versions`),
   restorePageVersion: (id: number | string, versionId: number) =>
     request<WikiPage>('POST', `/pages/${id}/restore`, { versionId }),
