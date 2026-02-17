@@ -1,5 +1,6 @@
 /**
  * Knowledge Graph – Daten für die Wissenslandkarte
+ * Nur Seiten und Parent-Child-Verbindungen (keine Tags)
  */
 
 const express = require('express');
@@ -27,20 +28,7 @@ router.get('/graph', authenticate, requirePermission('pages.read'), async (req, 
       isAdmin ? [] : [req.user.id]
     );
 
-    // Tags pro Seite
-    const tagsResult = await pool.query(`
-      SELECT pt.page_id, t.id AS tag_id, t.name, t.color
-      FROM wiki_page_tags pt
-      JOIN wiki_tags t ON pt.tag_id = t.id
-    `);
-
-    const tagMap = {};
-    for (const row of tagsResult.rows) {
-      if (!tagMap[row.page_id]) tagMap[row.page_id] = [];
-      tagMap[row.page_id].push({ id: row.tag_id, name: row.name, color: row.color });
-    }
-
-    // Nodes
+    // Nodes — nur Seiten
     const nodes = pagesResult.rows.map(p => ({
       id: `page-${p.id}`,
       pageId: p.id,
@@ -48,25 +36,11 @@ router.get('/graph', authenticate, requirePermission('pages.read'), async (req, 
       type: 'page',
       visibility: p.visibility,
       author: p.created_by_name,
-      tags: tagMap[p.id] || [],
       updatedAt: p.updated_at,
     }));
 
-    // Tag-Nodes (eindeutige Tags)
-    const uniqueTags = new Map();
-    for (const tags of Object.values(tagMap)) {
-      for (const tag of tags) {
-        if (!uniqueTags.has(tag.id)) {
-          uniqueTags.set(tag.id, { id: `tag-${tag.id}`, label: tag.name, type: 'tag', color: tag.color });
-        }
-      }
-    }
-    nodes.push(...uniqueTags.values());
-
-    // Edges
+    // Edges — nur Parent-Child
     const edges = [];
-
-    // Parent-Child-Beziehungen
     for (const page of pagesResult.rows) {
       if (page.parent_id) {
         const parentExists = pagesResult.rows.some(p => p.id === page.parent_id);
@@ -75,20 +49,6 @@ router.get('/graph', authenticate, requirePermission('pages.read'), async (req, 
             source: `page-${page.parent_id}`,
             target: `page-${page.id}`,
             type: 'parent',
-          });
-        }
-      }
-    }
-
-    // Seite → Tag Verbindungen
-    for (const [pageId, tags] of Object.entries(tagMap)) {
-      const pageNode = pagesResult.rows.find(p => p.id === parseInt(pageId));
-      if (pageNode) {
-        for (const tag of tags) {
-          edges.push({
-            source: `page-${pageId}`,
-            target: `tag-${tag.id}`,
-            type: 'tag',
           });
         }
       }

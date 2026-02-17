@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Save, X, Code, FileText, Tag, Eye, EyeOff } from 'lucide-react';
+import { Save, X, Code, FileText, Tag, Eye, EyeOff, Upload, Trash2, Paperclip } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType } from '../api/client';
@@ -27,7 +27,9 @@ export default function NewPage() {
   const [newTagColor, setNewTagColor] = useState('#6366f1');
   const [saving, setSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api.getPages().then(setAllPages).catch(() => {});
@@ -74,6 +76,21 @@ export default function NewPage() {
     ? DOMPurify.sanitize(marked.parse(content || '') as string)
     : DOMPurify.sanitize(content || '', { ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'style'], ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'target', 'controls', 'autoplay'] });
 
+  const addFiles = (files: FileList | File[]) => {
+    setPendingFiles(prev => [...prev, ...Array.from(files)]);
+    setIsDirty(true);
+  };
+
+  const removeFile = (idx: number) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
@@ -90,7 +107,20 @@ export default function NewPage() {
       if (selectedTagIds.length > 0) {
         await api.setPageTags(page.id, selectedTagIds).catch(() => {});
       }
-      showToast('Page created!', 'success');
+      // Upload pending files
+      let uploadFails = 0;
+      for (const file of pendingFiles) {
+        try {
+          await api.uploadAttachment(page.id, file);
+        } catch {
+          uploadFails++;
+        }
+      }
+      if (uploadFails > 0) {
+        showToast(`Page created but ${uploadFails} file(s) failed to upload`, 'error');
+      } else {
+        showToast('Page created!', 'success');
+      }
       setIsDirty(false);
       navigate(`/pages/${page.id}`);
     } catch (err: any) {
@@ -247,6 +277,38 @@ export default function NewPage() {
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="form-group">
+            <label><Paperclip size={14} style={{ verticalAlign: 'middle' }} /> Attachments</label>
+            <div className="newpage-files-area"
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
+            >
+              <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={e => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
+              {pendingFiles.length === 0 ? (
+                <button type="button" className="newpage-files-placeholder" onClick={() => fileInputRef.current?.click()}>
+                  <Upload size={18} />
+                  <span>Drop files here or click to upload</span>
+                </button>
+              ) : (
+                <>
+                  <div className="newpage-files-list">
+                    {pendingFiles.map((f, i) => (
+                      <div key={i} className="newpage-file-item">
+                        <Paperclip size={13} />
+                        <span className="newpage-file-name">{f.name}</span>
+                        <span className="newpage-file-size">{formatFileSize(f.size)}</span>
+                        <button type="button" className="icon-btn danger" onClick={() => removeFile(i)} title="Remove"><Trash2 size={13} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()} style={{ marginTop: 6 }}>
+                    <Upload size={14} /> Add more
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="editor-grid">

@@ -27,6 +27,7 @@ export default function PageView() {
   const [dragOver, setDragOver] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<Attachment | null>(null);
+  const [confirmDeleteTag, setConfirmDeleteTag] = useState<TagType | null>(null);
   const [showToc, setShowToc] = useState(false);
   const [approvalStatus, setApprovalStatus] = useState<ApprovalRequest | null>(null);
   const [approvalLoading, setApprovalLoading] = useState(false);
@@ -78,6 +79,20 @@ export default function PageView() {
       const updated = await api.setPageTags(id, newIds);
       setTags(updated);
     } catch { showToast('Failed to update tags', 'error'); }
+  };
+
+  const handleDeleteTag = async () => {
+    if (!confirmDeleteTag) return;
+    try {
+      await api.deleteTag(confirmDeleteTag.id);
+      setTags(prev => prev.filter(t => t.id !== confirmDeleteTag.id));
+      setAllTags(prev => prev.filter(t => t.id !== confirmDeleteTag.id));
+      showToast(`Tag "${confirmDeleteTag.name}" deleted`, 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setConfirmDeleteTag(null);
+    }
   };
 
   const handlePdfExport = async () => {
@@ -461,16 +476,20 @@ export default function PageView() {
                 {allTags.map(tag => {
                   const isSelected = tags.some(t => t.id === tag.id);
                   return (
-                    <button
-                      key={tag.id}
-                      className={`tag-picker-item ${isSelected ? 'selected' : ''}`}
-                      onClick={() => toggleTag(tag.id)}
-                      style={{ '--tag-color': tag.color } as React.CSSProperties}
-                    >
-                      <span className="tag-dot" />
-                      <span>{tag.name}</span>
-                      {isSelected && <span className="tag-check">✓</span>}
-                    </button>
+                    <div key={tag.id} className="tag-picker-row">
+                      <button
+                        className={`tag-picker-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => toggleTag(tag.id)}
+                        style={{ '--tag-color': tag.color } as React.CSSProperties}
+                      >
+                        <span className="tag-dot" />
+                        <span>{tag.name}</span>
+                        {isSelected && <span className="tag-check">✓</span>}
+                      </button>
+                      <button className="icon-btn danger tag-delete-btn" title="Delete tag" onClick={() => setConfirmDeleteTag(tag)}>
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -626,6 +645,17 @@ export default function PageView() {
           variant="danger"
           onConfirm={() => handleDeleteAttachment(confirmDeleteAtt)}
           onCancel={() => setConfirmDeleteAtt(null)}
+        />
+      )}
+
+      {confirmDeleteTag && (
+        <ConfirmDialog
+          title="Delete Tag?"
+          message={`"${confirmDeleteTag.name}" will be removed from all pages.`}
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={handleDeleteTag}
+          onCancel={() => setConfirmDeleteTag(null)}
         />
       )}
     </>

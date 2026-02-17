@@ -61,7 +61,7 @@ export default function KnowledgeGraph() {
       y: h / 2 + (Math.random() - 0.5) * Math.min(h, 400),
       vx: 0,
       vy: 0,
-      radius: n.type === 'tag' ? 6 : 10,
+      radius: 10,
     }));
     edgesRef.current = graphData.edges;
     cameraRef.current = { x: 0, y: 0, zoom: 1 };
@@ -70,13 +70,11 @@ export default function KnowledgeGraph() {
   // Color helpers
   const getNodeColor = (n: SimNode, hovered: boolean): string => {
     if (hovered) return '#f59e0b';
-    if (n.type === 'tag') return n.color || '#6366f1';
     if (n.visibility === 'published') return 'var(--c-success, #10b981)';
     return 'var(--c-primary, #6366f1)';
   };
 
-  const getEdgeColor = (e: GraphEdge): string =>
-    e.type === 'parent' ? 'rgba(99,102,241,0.25)' : 'rgba(99,102,241,0.12)';
+  const getEdgeColor = (_e: GraphEdge): string => 'rgba(99,102,241,0.3)';
 
   // Force simulation step
   const simulate = useCallback(() => {
@@ -192,7 +190,7 @@ export default function KnowledgeGraph() {
         ctx.moveTo(s.x, s.y);
         ctx.lineTo(t.x, t.y);
         ctx.strokeStyle = getEdgeColor(e);
-        ctx.lineWidth = e.type === 'parent' ? 1.5 : 0.8;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
       }
 
@@ -219,7 +217,7 @@ export default function KnowledgeGraph() {
         const isHovered = hovered?.id === n.id;
         ctx.fillStyle = isHovered ? '#f59e0b' : (getComputedStyle(document.documentElement).getPropertyValue('--c-text') || '#333');
         const label = n.label.length > 20 ? n.label.slice(0, 18) + '…' : n.label;
-        ctx.fillText(n.type === 'tag' ? `#${label}` : label, n.x, n.y + n.radius + 4);
+        ctx.fillText(label, n.x, n.y + n.radius + 4);
       }
 
       ctx.restore();
@@ -299,8 +297,6 @@ export default function KnowledgeGraph() {
       const n = dragRef.current.node;
       if (n.type === 'page') {
         navigate(`/pages/${n.id.replace('page-', '')}`);
-      } else if (n.type === 'tag') {
-        navigate(`/pages?tag=${encodeURIComponent(n.label)}`);
       }
     }
     dragRef.current = { active: false, dragging: false, startX: 0, startY: 0, lastX: 0, lastY: 0, node: null };
@@ -324,7 +320,6 @@ export default function KnowledgeGraph() {
   const zoomOut = () => { cameraRef.current.zoom = Math.max(cameraRef.current.zoom / 1.3, 0.1); };
 
   const pageCount = graphData?.nodes.filter(n => n.type === 'page').length ?? 0;
-  const tagCount = graphData?.nodes.filter(n => n.type === 'tag').length ?? 0;
 
   return (
     <div className="content-body">
@@ -333,7 +328,7 @@ export default function KnowledgeGraph() {
           <h1><Network size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} />Knowledge Graph</h1>
           {graphData && (
             <span style={{ fontSize: '0.85rem', color: 'var(--c-text-muted)' }}>
-              {pageCount} pages · {tagCount} tags · {graphData.edges.length} connections
+              {pageCount} pages · {graphData.edges.length} connections
             </span>
           )}
         </div>
@@ -385,9 +380,6 @@ export default function KnowledgeGraph() {
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-primary)', display: 'inline-block' }} /> Draft
             </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#6366f1', display: 'inline-block' }} /> Tag
-            </span>
             <span style={{ opacity: 0.6 }}>Click to open · Scroll to zoom · Drag to pan</span>
           </div>
           {hoveredNode && (
@@ -396,7 +388,7 @@ export default function KnowledgeGraph() {
               borderRadius: 'var(--radius-sm)', padding: '6px 12px', fontSize: '0.85rem', color: 'var(--c-text)',
               pointerEvents: 'none', boxShadow: 'var(--shadow-sm)',
             }}>
-              {hoveredNode.type === 'tag' ? `# ${hoveredNode.label}` : hoveredNode.label}
+              {hoveredNode.label}
               {hoveredNode.visibility && <span style={{ marginLeft: 8, opacity: 0.6, fontSize: '0.75rem' }}>{hoveredNode.visibility}</span>}
             </div>
           )}

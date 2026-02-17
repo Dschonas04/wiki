@@ -317,6 +317,21 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       `);
       await client.query('CREATE INDEX IF NOT EXISTS idx_tags_created_by ON wiki_tags(created_by)');
 
+      // Default priority tags (global, created_by = NULL)
+      const defaultTags = [
+        { name: 'critical', color: '#ef4444' },
+        { name: 'high', color: '#f97316' },
+        { name: 'medium', color: '#eab308' },
+        { name: 'low', color: '#22c55e' },
+        { name: 'info', color: '#3b82f6' },
+      ];
+      for (const tag of defaultTags) {
+        await client.query(
+          `INSERT INTO wiki_tags (name, color, created_by) VALUES ($1, $2, NULL) ON CONFLICT DO NOTHING`,
+          [tag.name, tag.color]
+        );
+      }
+
       // ===== User Settings (Theme etc.) =====
       await client.query(`
         CREATE TABLE IF NOT EXISTS user_settings (

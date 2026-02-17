@@ -2665,6 +2665,25 @@ button {
   background: var(--c-bg-hover);
 }
 
+.tag-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tag-picker-row .tag-picker-item {
+  flex: 1;
+}
+
+.tag-delete-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.tag-picker-row:hover .tag-delete-btn {
+  opacity: 1;
+}
+
 /* ── Editor Tag Picker (inline in forms) ─── */
 .editor-tags-bar {
   display: flex;
@@ -3535,5 +3554,303 @@ button {
   }
   .diff-content {
     font-size: 11px;
+  }
+}
+
+/* ================================================================
+   SETTINGS PAGE
+   ================================================================ */
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  max-width: 720px;
+}
+
+.settings-card {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.settings-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.settings-card-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.settings-card-body {
+  padding: 20px;
+}
+
+.settings-desc {
+  font-size: 0.84rem;
+  color: var(--c-text-muted);
+  margin: 0 0 16px;
+}
+
+/* Profile */
+.settings-profile-grid {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.settings-profile-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--c-primary);
+  color: var(--c-text-on-primary);
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.settings-profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.settings-profile-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.84rem;
+}
+
+.settings-label {
+  width: 110px;
+  color: var(--c-text-muted);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.settings-value {
+  color: var(--c-text);
+}
+
+.settings-role-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-role-badge.admin {
+  background: color-mix(in srgb, var(--c-danger) 15%, transparent);
+  color: var(--c-danger);
+}
+
+.settings-role-badge.editor {
+  background: color-mix(in srgb, var(--c-primary) 15%, transparent);
+  color: var(--c-primary);
+}
+
+.settings-role-badge.viewer {
+  background: color-mix(in srgb, var(--c-text-muted) 15%, transparent);
+  color: var(--c-text-muted);
+}
+
+/* Theme grid */
+.settings-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.settings-theme-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 2px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  background: var(--c-bg);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--c-text);
+  transition: all 0.15s;
+}
+
+.settings-theme-option:hover {
+  border-color: var(--c-primary);
+}
+
+.settings-theme-option.active {
+  border-color: var(--c-primary);
+  background: color-mix(in srgb, var(--c-primary) 8%, transparent);
+}
+
+.settings-theme-icon {
+  font-size: 1.1rem;
+}
+
+.settings-theme-label {
+  flex: 1;
+}
+
+.settings-theme-check {
+  color: var(--c-primary);
+  display: none;
+}
+
+.settings-theme-option.active .settings-theme-check {
+  display: block;
+}
+
+/* Password form */
+.settings-pw-form {
+  max-width: 380px;
+}
+
+.settings-pw-form .form-group {
+  margin-bottom: 12px;
+}
+
+.settings-pw-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 16px;
+  font-size: 0.78rem;
+  color: var(--c-text-muted);
+}
+
+.settings-pw-checks span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings-pw-checks .check-ok {
+  color: var(--c-success);
+}
+
+.settings-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--c-danger) 10%, transparent);
+  color: var(--c-danger);
+  font-size: 0.84rem;
+  margin-bottom: 16px;
+}
+
+/* Tags management */
+.settings-tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-tag-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+}
+
+.settings-tag-item .tag-badge {
+  min-width: 80px;
+}
+
+.settings-tag-count {
+  flex: 1;
+  font-size: 0.78rem;
+  color: var(--c-text-muted);
+}
+
+/* ================================================================
+   NEW PAGE FILE UPLOAD
+   ================================================================ */
+
+.newpage-files-area {
+  border: 2px dashed var(--c-border);
+  border-radius: var(--radius);
+  padding: 12px;
+  transition: border-color 0.15s;
+}
+
+.newpage-files-area:hover {
+  border-color: var(--c-primary);
+}
+
+.newpage-files-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--c-text-muted);
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.newpage-files-placeholder:hover {
+  color: var(--c-primary);
+}
+
+.newpage-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.newpage-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--c-surface);
+  font-size: 0.82rem;
+}
+
+.newpage-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newpage-file-size {
+  color: var(--c-text-muted);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .settings-profile-grid {
+    flex-direction: column;
+  }
+  .settings-theme-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
