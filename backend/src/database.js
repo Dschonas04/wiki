@@ -317,6 +317,22 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       `);
       await client.query('CREATE INDEX IF NOT EXISTS idx_tags_created_by ON wiki_tags(created_by)');
 
+      // Clean up duplicate global tags (NULLs are distinct in UNIQUE constraints)
+      await client.query(`
+        DELETE FROM wiki_tags WHERE id IN (
+          SELECT id FROM (
+            SELECT id, ROW_NUMBER() OVER (PARTITION BY name ORDER BY id) AS rn
+            FROM wiki_tags WHERE created_by IS NULL
+          ) dupes WHERE rn > 1
+        )
+      `);
+
+      // Partial unique index so global tags (created_by IS NULL) are truly unique by name
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name_global
+        ON wiki_tags(name) WHERE created_by IS NULL
+      `);
+
       // Default priority tags (global, created_by = NULL)
       const defaultTags = [
         { name: 'critical', color: '#ef4444' },
@@ -327,7 +343,7 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       ];
       for (const tag of defaultTags) {
         await client.query(
-          `INSERT INTO wiki_tags (name, color, created_by) VALUES ($1, $2, NULL) ON CONFLICT DO NOTHING`,
+          `INSERT INTO wiki_tags (name, color, created_by) VALUES ($1, $2, NULL) ON CONFLICT (name) WHERE created_by IS NULL DO NOTHING`,
           [tag.name, tag.color]
         );
       }
