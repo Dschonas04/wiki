@@ -1,12 +1,12 @@
 {
-  "name": "wiki-app",
+  "name": "nexora-app",
   "version": "1.0.0",
-  "description": "Wiki application with PostgreSQL",
+  "description": "Nexora application with PostgreSQL",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": ["wiki", "postgresql", "docker"],
+  "keywords": ["nexora", "postgresql", "docker"],
   "author": "",
   "license": "ISC",
   "dependencies": {

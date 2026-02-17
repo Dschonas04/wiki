@@ -1,14 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2, Eye, EyeOff, Paperclip, Upload, X, List, CheckCircle, Clock, XCircle, Send } from 'lucide-react';
+import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Paperclip, Upload, X, List } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { api, type WikiPage, type Tag as TagType, type Attachment, type ApprovalRequest } from '../api/client';
+import { api, type WikiPage, type Tag as TagType, type Attachment } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
-import ShareDialog from '../components/ShareDialog';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function PageView() {
@@ -21,7 +20,6 @@ export default function PageView() {
   const [tags, setTags] = useState<TagType[]>([]);
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
-  const [showShare, setShowShare] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -29,26 +27,22 @@ export default function PageView() {
   const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<Attachment | null>(null);
   const [confirmDeleteTag, setConfirmDeleteTag] = useState<TagType | null>(null);
   const [showToc, setShowToc] = useState(false);
-  const [approvalStatus, setApprovalStatus] = useState<ApprovalRequest | null>(null);
-  const [approvalLoading, setApprovalLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
   const canEdit = hasPermission('pages.edit');
   const canDelete = hasPermission('pages.delete');
   const isOwner = page ? page.created_by === user?.id : false;
-  const isAdmin = user?.role === 'admin';
-  const canChangeVisibility = isOwner || isAdmin;
+  const isAdmin = user?.globalRole === 'admin';
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     Promise.all([
-      api.getPage(id).then(setPage).catch((err) => setError(err.status === 404 ? 'Page not found.' : err.message)),
+      api.getPage(id).then(setPage).catch((err) => setError(err.status === 404 ? 'Seite nicht gefunden.' : err.message)),
       api.checkFavorite(id).then(r => setFavorited(r.favorited)).catch(() => {}),
       api.getPageTags(id).then(setTags).catch(() => {}),
       api.getAttachments(id).then(setAttachments).catch(() => {}),
-      api.getPageApprovalStatus(id).then(setApprovalStatus).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [id]);
 
@@ -57,8 +51,8 @@ export default function PageView() {
     try {
       const result = await api.toggleFavorite(id);
       setFavorited(result.favorited);
-      showToast(result.favorited ? 'Added to favorites' : 'Removed from favorites', 'success');
-    } catch { showToast('Failed to toggle favorite', 'error'); }
+      showToast(result.favorited ? 'Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt', 'success');
+    } catch { showToast('Fehler beim Ändern der Favoriten', 'error'); }
   };
 
   const openTagPicker = async () => {
@@ -66,7 +60,7 @@ export default function PageView() {
       const all = await api.getTags();
       setAllTags(all);
       setShowTagPicker(true);
-    } catch { showToast('Failed to load tags', 'error'); }
+    } catch { showToast('Tags konnten nicht geladen werden', 'error'); }
   };
 
   const toggleTag = async (tagId: number) => {
@@ -78,7 +72,7 @@ export default function PageView() {
     try {
       const updated = await api.setPageTags(id, newIds);
       setTags(updated);
-    } catch { showToast('Failed to update tags', 'error'); }
+    } catch { showToast('Tags konnten nicht aktualisiert werden', 'error'); }
   };
 
   const handleDeleteTag = async () => {
@@ -87,7 +81,7 @@ export default function PageView() {
       await api.deleteTag(confirmDeleteTag.id);
       setTags(prev => prev.filter(t => t.id !== confirmDeleteTag.id));
       setAllTags(prev => prev.filter(t => t.id !== confirmDeleteTag.id));
-      showToast(`Tag "${confirmDeleteTag.name}" deleted`, 'success');
+      showToast(`Tag "${confirmDeleteTag.name}" gelöscht`, 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -112,9 +106,9 @@ export default function PageView() {
         })
         .from(element)
         .save();
-      showToast('PDF exported', 'success');
+      showToast('PDF exportiert', 'success');
     } catch {
-      showToast('PDF export failed', 'error');
+      showToast('PDF-Export fehlgeschlagen', 'error');
     }
   };
 
@@ -122,71 +116,12 @@ export default function PageView() {
     if (!page) return;
     try {
       await api.deletePage(page.id);
-      showToast('Page moved to trash', 'success');
+      showToast('Seite in Papierkorb verschoben', 'success');
       navigate('/pages');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
       setConfirmDelete(false);
-    }
-  };
-
-  const toggleVisibility = async () => {
-    if (!page) return;
-    // Admin can directly publish/unpublish
-    if (isAdmin) {
-      const newVis = page.visibility === 'published' ? 'draft' : 'published';
-      try {
-        const updated = await api.setPageVisibility(page.id, newVis);
-        setPage(updated);
-        if (newVis === 'published') {
-          setApprovalStatus(null); // clear pending status
-        }
-        showToast(newVis === 'published' ? 'Page published — now visible to all users' : 'Page set to draft — only visible to you', 'success');
-      } catch (err: any) {
-        showToast(err.message, 'error');
-      }
-    } else {
-      // Non-admin can only unpublish (set to draft)
-      if (page.visibility === 'published') {
-        try {
-          const updated = await api.setPageVisibility(page.id, 'draft');
-          setPage(updated);
-          showToast('Page set to draft', 'success');
-        } catch (err: any) {
-          showToast(err.message, 'error');
-        }
-      }
-    }
-  };
-
-  const requestApproval = async () => {
-    if (!page || !id) return;
-    setApprovalLoading(true);
-    try {
-      const result = await api.requestApproval(page.id);
-      setApprovalStatus(result);
-      setPage({ ...page, approval_status: 'pending' });
-      showToast('Approval request sent — an admin will review your page', 'success');
-    } catch (err: any) {
-      showToast(err.message, 'error');
-    } finally {
-      setApprovalLoading(false);
-    }
-  };
-
-  const cancelApproval = async () => {
-    if (!page || !id) return;
-    setApprovalLoading(true);
-    try {
-      await api.cancelApproval(page.id);
-      setApprovalStatus(null);
-      setPage({ ...page, approval_status: 'none' });
-      showToast('Approval request cancelled', 'success');
-    } catch (err: any) {
-      showToast(err.message, 'error');
-    } finally {
-      setApprovalLoading(false);
     }
   };
 
@@ -200,10 +135,10 @@ export default function PageView() {
         setAttachments(prev => [att, ...prev]);
         successCount++;
       } catch (err: any) {
-        showToast(`Failed to upload "${file.name}": ${err.message}`, 'error');
+        showToast(`Fehler beim Hochladen von "${file.name}": ${err.message}`, 'error');
       }
     }
-    if (successCount > 0) showToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
+    if (successCount > 0) showToast(`${successCount} Datei(en) hochgeladen`, 'success');
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -212,7 +147,7 @@ export default function PageView() {
     try {
       await api.deleteAttachment(att.id);
       setAttachments(prev => prev.filter(a => a.id !== att.id));
-      showToast('Attachment deleted', 'success');
+      showToast('Anhang gelöscht', 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -280,7 +215,7 @@ export default function PageView() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Loading…" />
+        <PageHeader title="Laden…" />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -289,13 +224,13 @@ export default function PageView() {
   if (error || !page) {
     return (
       <>
-        <PageHeader title="Error" />
+        <PageHeader title="Fehler" />
         <div className="content-body">
           <div className="card">
-            <p className="error-text">{error || 'Page not found.'}</p>
+            <p className="error-text">{error || 'Seite nicht gefunden.'}</p>
             <div className="btn-row">
               <Link to="/pages" className="btn btn-secondary">
-                <ArrowLeft size={16} /> Back to Pages
+                <ArrowLeft size={16} /> Zurück zu Seiten
               </Link>
             </div>
           </div>
@@ -310,93 +245,52 @@ export default function PageView() {
         title={page.title}
         actions={
           <div className="btn-row">
-            {/* Admin: direct publish/unpublish */}
-            {isAdmin && (
-              <button
-                className={`btn ${page.visibility === 'published' ? 'btn-secondary' : 'btn-success'}`}
-                onClick={toggleVisibility}
-                title={page.visibility === 'published' ? 'Set to draft (hide from others)' : 'Publish directly (admin)'}
-              >
-                {page.visibility === 'published' ? <EyeOff size={16} /> : <Eye size={16} />}
-                <span>{page.visibility === 'published' ? 'Unpublish' : 'Publish'}</span>
-              </button>
-            )}
-            {/* Non-admin owner: request approval or cancel */}
-            {!isAdmin && isOwner && page.visibility !== 'published' && (
-              <>
-                {page.approval_status === 'pending' ? (
-                  <button
-                    className="btn btn-warning"
-                    onClick={cancelApproval}
-                    disabled={approvalLoading}
-                    title="Cancel approval request"
-                  >
-                    <Clock size={16} />
-                    <span>Pending…</span>
-                  </button>
-                ) : (
-                  <button
-                    className="btn btn-success"
-                    onClick={requestApproval}
-                    disabled={approvalLoading}
-                    title="Request admin approval to publish this page"
-                  >
-                    <Send size={16} />
-                    <span>Request Approval</span>
-                  </button>
-                )}
-              </>
-            )}
-            {/* Non-admin owner: can unpublish */}
-            {!isAdmin && isOwner && page.visibility === 'published' && (
-              <button className="btn btn-secondary" onClick={toggleVisibility} title="Set to draft">
-                <EyeOff size={16} />
-                <span>Unpublish</span>
-              </button>
+            {/* Workflow-Status */}
+            {(page as any).workflow_status && (
+              <span className="btn btn-secondary" style={{ cursor: 'default', opacity: 0.85 }}>
+                {(page as any).workflow_status === 'published' ? '✅ Veröffentlicht' :
+                 (page as any).workflow_status === 'draft' ? '📝 Entwurf' :
+                 (page as any).workflow_status === 'review' ? '🔍 In Prüfung' :
+                 (page as any).workflow_status}
+              </span>
             )}
             <button
               className={`btn ${favorited ? 'btn-warning' : 'btn-secondary'}`}
               onClick={toggleFavorite}
-              title={favorited ? 'Remove from favorites' : 'Add to favorites'}
+              title={favorited ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
             >
               <Star size={16} fill={favorited ? 'currentColor' : 'none'} />
             </button>
             {canEdit && (
               <Link to={`/pages/${page.id}/edit`} className="btn btn-primary">
                 <Edit3 size={16} />
-                <span>Edit</span>
+                <span>Bearbeiten</span>
               </Link>
             )}
             {canEdit && (
               <Link to={`/pages/${page.id}/history`} className="btn btn-secondary">
                 <History size={16} />
-                <span>History</span>
+                <span>Verlauf</span>
               </Link>
             )}
             <a href={api.exportPage(page.id)} className="btn btn-secondary" download>
               <Download size={16} />
-              <span>Export</span>
+              <span>Exportieren</span>
             </a>
             {tocItems.length > 0 && (
-              <button className={`btn ${showToc ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowToc(!showToc)} title="Table of Contents">
+              <button className={`btn ${showToc ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowToc(!showToc)} title="Inhaltsverzeichnis">
                 <List size={16} />
-                <span>TOC</span>
+                <span>Inhalt</span>
               </button>
             )}
             <button className="btn btn-secondary" onClick={handlePdfExport} title="Als PDF exportieren">
               <FileText size={16} />
               <span>PDF</span>
             </button>
-            {canEdit && (
-              <button className="btn btn-secondary" onClick={() => setShowShare(true)} title="Share">
-                <Share2 size={16} />
-                <span>Share</span>
-              </button>
-            )}
             {canDelete && (
               <button className="btn btn-danger" onClick={() => setConfirmDelete(true)}>
                 <Trash2 size={16} />
-                <span>Delete</span>
+                <span>Löschen</span>
               </button>
             )}
           </div>
@@ -404,51 +298,14 @@ export default function PageView() {
       />
 
       <div className="content-body">
-        {/* Draft / Approval status notices */}
-        {page.visibility !== 'published' && page.approval_status === 'pending' && (
-          <div className="approval-banner pending">
-            <Clock size={16} />
-            <span>
-              <strong>Approval pending</strong> — this page is awaiting admin review before it can be published.
-            </span>
-            {(isOwner || isAdmin) && (
-              <button className="btn btn-sm btn-secondary" onClick={cancelApproval} disabled={approvalLoading}>
-                Cancel Request
-              </button>
-            )}
-          </div>
-        )}
-
-        {page.visibility !== 'published' && page.approval_status === 'rejected' && (
-          <div className="approval-banner rejected">
-            <XCircle size={16} />
-            <div>
-              <strong>Approval rejected</strong>
-              {approvalStatus?.comment && <span> — {approvalStatus.comment}</span>}
-              {approvalStatus?.reviewer_name && <span className="approval-reviewer"> by {approvalStatus.reviewer_name}</span>}
-            </div>
-            {isOwner && (
-              <button className="btn btn-sm btn-success" onClick={requestApproval} disabled={approvalLoading}>
-                <Send size={14} /> Re-request
-              </button>
-            )}
-          </div>
-        )}
-
-        {page.visibility !== 'published' && page.approval_status !== 'pending' && page.approval_status !== 'rejected' && (
+        {/* Workflow-Status-Anzeige */}
+        {(page as any).workflow_status && (page as any).workflow_status !== 'published' && (
           <div className="draft-banner">
-            <EyeOff size={16} />
-            <span>This page is a <strong>draft</strong> — only visible to you{isAdmin ? ' (admin)' : ''} and admins.</span>
-            {isAdmin && (
-              <button className="btn btn-sm btn-success" onClick={toggleVisibility}>
-                <Eye size={14} /> Publish
-              </button>
-            )}
-            {!isAdmin && isOwner && (
-              <button className="btn btn-sm btn-success" onClick={requestApproval} disabled={approvalLoading}>
-                <Send size={14} /> Request Approval
-              </button>
-            )}
+            <span>
+              {(page as any).workflow_status === 'draft' && <>📝 Diese Seite ist ein <strong>Entwurf</strong> und noch nicht veröffentlicht.</>}
+              {(page as any).workflow_status === 'review' && <>🔍 Diese Seite befindet sich <strong>in Prüfung</strong>.</>}
+              {!['draft', 'review'].includes((page as any).workflow_status) && <><strong>Status:</strong> {(page as any).workflow_status}</>}
+            </span>
           </div>
         )}
 
@@ -461,7 +318,7 @@ export default function PageView() {
           ))}
           {canEdit && (
             <button className="tag-add-btn" onClick={openTagPicker}>
-              <Tag size={14} /> {tags.length === 0 ? 'Add tags' : '+'}
+              <Tag size={14} /> {tags.length === 0 ? 'Tags hinzufügen' : '+'}
             </button>
           )}
         </div>
@@ -470,9 +327,9 @@ export default function PageView() {
         {showTagPicker && (
           <div className="tag-picker-overlay" onClick={() => setShowTagPicker(false)}>
             <div className="tag-picker" onClick={e => e.stopPropagation()}>
-              <h4>Select Tags</h4>
+              <h4>Tags auswählen</h4>
               <div className="tag-picker-list">
-                {allTags.length === 0 && <p className="text-muted" style={{ fontSize: '0.85rem' }}>No tags yet. Create tags to categorize pages.</p>}
+                {allTags.length === 0 && <p className="text-muted" style={{ fontSize: '0.85rem' }}>Noch keine Tags. Erstelle Tags, um Seiten zu kategorisieren.</p>}
                 {allTags.map(tag => {
                   const isSelected = tags.some(t => t.id === tag.id);
                   return (
@@ -494,7 +351,7 @@ export default function PageView() {
                 })}
               </div>
               <button className="btn btn-secondary" onClick={() => setShowTagPicker(false)} style={{ marginTop: 12, width: '100%' }}>
-                Done
+                Fertig
               </button>
             </div>
           </div>
@@ -504,7 +361,7 @@ export default function PageView() {
           {/* Table of Contents */}
           {showToc && tocItems.length > 0 && (
             <nav className="toc-sidebar">
-              <h4 className="toc-title">Table of Contents</h4>
+              <h4 className="toc-title">Inhaltsverzeichnis</h4>
               <ul className="toc-list">
                 {tocItems.map(item => (
                   <li key={item.id} className={`toc-item toc-level-${item.level}`}>
@@ -528,7 +385,7 @@ export default function PageView() {
         {/* Attachments */}
         <div className="attachments-section">
           <div className="attachments-header">
-            <h3><Paperclip size={18} /> Attachments {attachments.length > 0 && <span className="attachments-count">{attachments.length}</span>}</h3>
+            <h3><Paperclip size={18} /> Anhänge {attachments.length > 0 && <span className="attachments-count">{attachments.length}</span>}</h3>
             {canEdit && (
               <div className="attachments-actions">
                 <input
@@ -540,7 +397,7 @@ export default function PageView() {
                 />
                 <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                   <Upload size={14} />
-                  <span>{uploading ? 'Uploading…' : 'Upload File'}</span>
+                  <span>{uploading ? 'Wird hochgeladen…' : 'Datei hochladen'}</span>
                 </button>
               </div>
             )}
@@ -558,7 +415,7 @@ export default function PageView() {
               }}
             >
               <Upload size={20} />
-              <span>Drag & drop files here</span>
+              <span>Dateien hierher ziehen</span>
             </div>
           )}
 
@@ -600,16 +457,16 @@ export default function PageView() {
         <div className="page-view-meta">
           <div className="meta-item">
             <Calendar size={14} />
-            <span>Created {formatDateLong(page.created_at)}</span>
+            <span>Erstellt {formatDateLong(page.created_at)}</span>
           </div>
           <div className="meta-item">
             <RefreshCw size={14} />
-            <span>Updated {formatDateLong(page.updated_at)}</span>
+            <span>Aktualisiert {formatDateLong(page.updated_at)}</span>
           </div>
           {(page as any).created_by_name && (
             <div className="meta-item">
               <User size={14} />
-              <span>Author: {(page as any).created_by_name}</span>
+              <span>Autor: {(page as any).created_by_name}</span>
             </div>
           )}
         </div>
@@ -617,20 +474,16 @@ export default function PageView() {
         <div className="btn-row" style={{ marginTop: 24 }}>
           <Link to="/pages" className="btn btn-secondary">
             <ArrowLeft size={16} />
-            <span>Back to Pages</span>
+            <span>Zurück zu Seiten</span>
           </Link>
         </div>
       </div>
 
-      {showShare && page && (
-        <ShareDialog pageId={page.id} pageTitle={page.title} onClose={() => setShowShare(false)} />
-      )}
-
       {confirmDelete && page && (
         <ConfirmDialog
-          title="Delete Page?"
-          message={`"${page.title}" will be moved to trash. You can restore it later.`}
-          confirmLabel="Move to Trash"
+          title="Seite löschen?"
+          message={`"${page.title}" wird in den Papierkorb verschoben. Du kannst sie später wiederherstellen.`}
+          confirmLabel="In Papierkorb verschieben"
           variant="danger"
           onConfirm={handleDelete}
           onCancel={() => setConfirmDelete(false)}
@@ -639,9 +492,9 @@ export default function PageView() {
 
       {confirmDeleteAtt && (
         <ConfirmDialog
-          title="Delete Attachment?"
-          message={`"${confirmDeleteAtt.original_name}" will be permanently deleted.`}
-          confirmLabel="Delete"
+          title="Anhang löschen?"
+          message={`"${confirmDeleteAtt.original_name}" wird dauerhaft gelöscht.`}
+          confirmLabel="Löschen"
           variant="danger"
           onConfirm={() => handleDeleteAttachment(confirmDeleteAtt)}
           onCancel={() => setConfirmDeleteAtt(null)}
@@ -650,9 +503,9 @@ export default function PageView() {
 
       {confirmDeleteTag && (
         <ConfirmDialog
-          title="Delete Tag?"
-          message={`"${confirmDeleteTag.name}" will be removed from all pages.`}
-          confirmLabel="Delete"
+          title="Tag löschen?"
+          message={`"${confirmDeleteTag.name}" wird von allen Seiten entfernt.`}
+          confirmLabel="Löschen"
           variant="danger"
           onConfirm={handleDeleteTag}
           onCancel={() => setConfirmDeleteTag(null)}

@@ -107,7 +107,7 @@ export default function EditPage() {
         contentType,
       });
       await api.setPageTags(id, selectedTagIds).catch(() => {});
-      showToast('Page updated!', 'success');
+      showToast('Seite aktualisiert!', 'success');
       setIsDirty(false);
       navigate(`/pages/${id}`);
     } catch (err: any) {
@@ -122,7 +122,7 @@ export default function EditPage() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Edit Page" />
+        <PageHeader title="Seite bearbeiten" />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -131,7 +131,7 @@ export default function EditPage() {
   if (error) {
     return (
       <>
-        <PageHeader title="Error" />
+        <PageHeader title="Fehler" />
         <div className="content-body">
           <div className="card">
             <p className="error-text">{error}</p>
@@ -143,12 +143,12 @@ export default function EditPage() {
 
   return (
     <>
-      <PageHeader title="Edit Page" subtitle={title} />
+      <PageHeader title="Seite bearbeiten" subtitle={title} />
 
       <div className="content-body">
         <form className="page-form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="title">Title</label>
+            <label htmlFor="title">Titel</label>
             <input
               id="title"
               type="text"
@@ -161,13 +161,13 @@ export default function EditPage() {
 
           <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
-              <label htmlFor="parentId">Parent Page (optional)</label>
+              <label htmlFor="parentId">Übergeordnete Seite (optional)</label>
               <select
                 id="parentId"
                 value={parentId ?? ''}
                 onChange={(e) => setParentId(e.target.value ? parseInt(e.target.value) : null)}
               >
-                <option value="">— No parent (top-level) —</option>
+                <option value="">— Keine (oberste Ebene) —</option>
                 {parentOptions.map((p) => (
                   <option key={p.id} value={p.id}>{p.title}</option>
                 ))}
@@ -175,7 +175,7 @@ export default function EditPage() {
             </div>
 
             <div className="form-group" style={{ flex: 0 }}>
-              <label>Content Type</label>
+              <label>Inhaltstyp</label>
               <div className="content-type-toggle">
                 <button
                   type="button"
@@ -209,7 +209,7 @@ export default function EditPage() {
                 );
               })}
               <button type="button" className="tag-add-btn" onClick={() => setShowTagPicker(!showTagPicker)}>
-                <Tag size={14} /> {selectedTagIds.length === 0 ? 'Add tags' : '+'}
+                <Tag size={14} /> {selectedTagIds.length === 0 ? 'Tags hinzufügen' : '+'}
               </button>
             </div>
             {showTagPicker && (
@@ -238,16 +238,16 @@ export default function EditPage() {
                     className="tag-color-input"
                     value={newTagColor}
                     onChange={e => setNewTagColor(e.target.value)}
-                    title="Tag color"
+                    title="Tag-Farbe"
                   />
                   <input
                     type="text"
-                    placeholder="New tag name…"
+                    placeholder="Neuer Tag-Name…"
                     value={newTagName}
                     onChange={e => setNewTagName(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndSelectTag(); } }}
                   />
-                  <button type="button" className="btn btn-sm btn-primary" onClick={createAndSelectTag} disabled={!newTagName.trim()}>Create</button>
+                  <button type="button" className="btn btn-sm btn-primary" onClick={createAndSelectTag} disabled={!newTagName.trim()}>Erstellen</button>
                 </div>
               </div>
             )}
@@ -255,7 +255,7 @@ export default function EditPage() {
 
           <div className="editor-grid">
             <div className="form-group">
-              <label htmlFor="content">Content ({contentType === 'markdown' ? 'Markdown' : 'HTML'})</label>
+              <label htmlFor="content">Inhalt ({contentType === 'markdown' ? 'Markdown' : 'HTML'})</label>
               <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
               <textarea
                 ref={contentRef}
@@ -269,7 +269,7 @@ export default function EditPage() {
             </div>
 
             <div className="form-group">
-              <label>Live Preview</label>
+              <label>Vorschau</label>
               <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
@@ -277,11 +277,11 @@ export default function EditPage() {
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>
               <Save size={16} />
-              <span>{saving ? 'Saving…' : 'Save Changes'}</span>
+              <span>{saving ? 'Wird gespeichert…' : 'Änderungen speichern'}</span>
             </button>
             <Link to={`/pages/${id}`} className="btn btn-secondary">
               <X size={16} />
-              <span>Cancel</span>
+              <span>Abbrechen</span>
             </Link>
           </div>
         </form>

@@ -40,7 +40,7 @@ export default function PageHistory() {
     if (!id || confirmRestore === null) return;
     try {
       await api.restorePageVersion(id, confirmRestore);
-      showToast('Version restored', 'success');
+      showToast('Version wiederhergestellt', 'success');
       navigate(`/pages/${id}`);
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -96,7 +96,7 @@ export default function PageHistory() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Page History" />
+        <PageHeader title="Seitenhistorie" />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -105,13 +105,13 @@ export default function PageHistory() {
   if (error) {
     return (
       <>
-        <PageHeader title="Page History" />
+        <PageHeader title="Seitenhistorie" />
         <div className="content-body">
           <div className="card error-card">
-            <p>Could not load history: {error}</p>
+            <p>Verlauf konnte nicht geladen werden: {error}</p>
             <div className="btn-row" style={{ marginTop: 12 }}>
               <Link to={`/pages/${id}`} className="btn btn-secondary">
-                <ArrowLeft size={16} /> Back to Page
+                <ArrowLeft size={16} /> Zurück zur Seite
               </Link>
             </div>
           </div>
@@ -122,12 +122,12 @@ export default function PageHistory() {
 
   return (
     <>
-      <PageHeader title="Page History" subtitle={`${versions.length} version${versions.length !== 1 ? 's' : ''}`} />
+      <PageHeader title="Seitenhistorie" subtitle={`${versions.length} Version${versions.length !== 1 ? 'en' : ''}`} />
 
       <div className="content-body">
         {versions.length === 0 ? (
           <div className="card">
-            <p>No history yet.</p>
+            <p>Noch kein Verlauf vorhanden.</p>
           </div>
         ) : (
           <>
@@ -138,8 +138,8 @@ export default function PageHistory() {
               return (
                 <div className="diff-section">
                   <div className="diff-header">
-                    <h3><GitCompare size={16} /> Comparing v{diff.oldVersion.version_number} → v{diff.newVersion.version_number}</h3>
-                    <button className="btn btn-sm btn-secondary" onClick={() => setDiffVersions(null)}>Close</button>
+                    <h3><GitCompare size={16} /> Vergleich v{diff.oldVersion.version_number} → v{diff.newVersion.version_number}</h3>
+                    <button className="btn btn-sm btn-secondary" onClick={() => setDiffVersions(null)}>Schließen</button>
                   </div>
                   <div className="diff-content">
                     {diff.lines.map((line, i) => (
@@ -169,13 +169,13 @@ export default function PageHistory() {
                       <button
                         className="btn btn-secondary btn-sm"
                         onClick={() => setDiffVersions([versions[i + 1].id, v.id])}
-                        title="Compare with previous version"
+                        title="Mit vorheriger Version vergleichen"
                       >
-                        <GitCompare size={14} /> Diff
+                        <GitCompare size={14} /> Vergleich
                       </button>
                     )}
                     <button className="btn btn-secondary btn-sm" onClick={() => setConfirmRestore(v.id)}>
-                      <RotateCcw size={14} /> Restore
+                      <RotateCcw size={14} /> Wiederherstellen
                     </button>
                   </div>
                 </div>
@@ -186,16 +186,16 @@ export default function PageHistory() {
 
         <div className="btn-row" style={{ marginTop: 18 }}>
           <Link to={`/pages/${id}`} className="btn btn-secondary">
-            <ArrowLeft size={16} /> Back to Page
+            <ArrowLeft size={16} /> Zurück zur Seite
           </Link>
         </div>
       </div>
 
       {confirmRestore !== null && (
         <ConfirmDialog
-          title="Restore Version?"
-          message="The current content will be saved to history before restoring this version."
-          confirmLabel="Restore"
+          title="Version wiederherstellen?"
+          message="Der aktuelle Inhalt wird vor der Wiederherstellung dieser Version im Verlauf gesichert."
+          confirmLabel="Wiederherstellen"
           variant="warning"
           onConfirm={handleRestore}
           onCancel={() => setConfirmRestore(null)}

@@ -14,7 +14,7 @@ export default function Favorites() {
   useEffect(() => {
     api.getFavorites()
       .then(setPages)
-      .catch(() => showToast('Failed to load favorites', 'error'))
+      .catch(() => showToast('Favoriten konnten nicht geladen werden', 'error'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -22,9 +22,9 @@ export default function Favorites() {
     try {
       await api.toggleFavorite(pageId);
       setPages(prev => prev.filter(p => p.id !== pageId));
-      showToast('Removed from favorites', 'success');
+      showToast('Aus Favoriten entfernt', 'success');
     } catch {
-      showToast('Failed to remove favorite', 'error');
+      showToast('Fehler beim Entfernen des Favoriten', 'error');
     }
   };
 
@@ -40,12 +40,12 @@ export default function Favorites() {
 
   return (
     <>
-      <PageHeader title="Favorites" subtitle={`${pages.length} saved page${pages.length !== 1 ? 's' : ''}`} />
+      <PageHeader title="Favoriten" subtitle={`${pages.length} gespeicherte Seiten`} />
       <div className="content-body">
         {pages.length === 0 ? (
           <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--c-text-muted)' }}>
             <Star size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
-            <p>No favorites yet. Star pages to save them here.</p>
+            <p>Noch keine Favoriten. Markiere Seiten mit einem Stern, um sie hier zu speichern.</p>
           </div>
         ) : (
           <div className="recent-pages-list">
@@ -61,7 +61,7 @@ export default function Favorites() {
                 <button
                   className="btn btn-ghost"
                   onClick={() => removeFavorite(page.id)}
-                  title="Remove from favorites"
+                  title="Aus Favoriten entfernen"
                   style={{ padding: 6, color: '#f59e0b' }}
                 >
                   <Star size={18} fill="currentColor" />

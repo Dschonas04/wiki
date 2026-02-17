@@ -1,6 +1,6 @@
-# Wiki
+# Nexora
 
-A self-hosted wiki application with role-based access control (RBAC), optional LDAP authentication, multi-theme support, and an interactive knowledge graph.
+A self-hosted knowledge base application with role-based access control (RBAC), optional LDAP authentication, multi-theme support, and an interactive knowledge graph.
 
 Built with **React 18**, **Node.js 18**, **PostgreSQL 15**, and **Nginx** — fully containerized with Docker Compose.
 

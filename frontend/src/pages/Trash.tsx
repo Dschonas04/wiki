@@ -36,7 +36,7 @@ export default function Trash() {
     try {
       await api.restoreFromTrash(id);
       setItems(prev => prev.filter(i => i.id !== id));
-      showToast('Page restored', 'success');
+      showToast('Seite wiederhergestellt', 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     }
@@ -47,7 +47,7 @@ export default function Trash() {
     try {
       await api.permanentDelete(confirm.id);
       setItems(prev => prev.filter(i => i.id !== confirm.id));
-      showToast('Page permanently deleted', 'success');
+      showToast('Seite endgültig gelöscht', 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -67,7 +67,7 @@ export default function Trash() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Trash" subtitle="Deleted pages" />
+        <PageHeader title="Papierkorb" subtitle="Gelöschte Seiten" />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -75,14 +75,14 @@ export default function Trash() {
 
   return (
     <>
-      <PageHeader title="Trash" subtitle={`${items.length} deleted page${items.length !== 1 ? 's' : ''}`} />
+      <PageHeader title="Papierkorb" subtitle={`${items.length} gelöschte Seiten`} />
 
       <div className="content-body">
         {items.length === 0 ? (
           <EmptyState
             icon={<Trash2 size={48} />}
-            title="Trash is empty"
-            description="Deleted pages will appear here and can be restored."
+            title="Papierkorb ist leer"
+            description="Gelöschte Seiten werden hier angezeigt und können wiederhergestellt werden."
           />
         ) : (
           <div className="trash-list">
@@ -94,19 +94,19 @@ export default function Trash() {
                     {item.title}
                   </span>
                   <span className="trash-item-meta">
-                    Deleted {formatDate(item.deleted_at)}
-                    {item.deleted_by_name && ` by ${item.deleted_by_name}`}
+                    Gelöscht {formatDate(item.deleted_at)}
+                    {item.deleted_by_name && ` von ${item.deleted_by_name}`}
                   </span>
                 </div>
                 <div className="trash-item-actions">
                   {canEdit && (
-                    <button className="btn btn-sm btn-secondary" onClick={() => handleRestore(item.id)} title="Restore">
-                      <RotateCcw size={14} /> Restore
+                    <button className="btn btn-sm btn-secondary" onClick={() => handleRestore(item.id)} title="Wiederherstellen">
+                      <RotateCcw size={14} /> Wiederherstellen
                     </button>
                   )}
                   {canDelete && (
-                    <button className="btn btn-sm btn-danger" onClick={() => setConfirm({ id: item.id, title: item.title })} title="Delete permanently">
-                      <X size={14} /> Delete
+                    <button className="btn btn-sm btn-danger" onClick={() => setConfirm({ id: item.id, title: item.title })} title="Endgültig löschen">
+                      <X size={14} /> Löschen
                     </button>
                   )}
                 </div>
@@ -118,9 +118,9 @@ export default function Trash() {
 
       {confirm && (
         <ConfirmDialog
-          title="Permanently Delete?"
-          message={`"${confirm.title}" will be permanently deleted. This cannot be undone.`}
-          confirmLabel="Delete Forever"
+          title="Endgültig löschen?"
+          message={`"${confirm.title}" wird endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.`}
+          confirmLabel="Endgültig löschen"
           variant="danger"
           onConfirm={handlePermanentDelete}
           onCancel={() => setConfirm(null)}

@@ -13,14 +13,14 @@ export default function Login() {
     e.preventDefault();
     setError('');
     if (!username.trim() || !password) {
-      setError('Username and password are required.');
+      setError('Benutzername und Passwort sind erforderlich.');
       return;
     }
     setLoading(true);
     try {
       await login(username.trim(), password);
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(err.message || 'Anmeldung fehlgeschlagen');
     } finally {
       setLoading(false);
     }
@@ -33,8 +33,8 @@ export default function Login() {
           <div className="login-logo">
             <BookOpen size={32} />
           </div>
-          <h1>Wiki</h1>
-          <p>Sign in to your account</p>
+          <h1>Nexora</h1>
+          <p>Melde dich bei deinem Konto an</p>
         </div>
 
         {error && (
@@ -46,13 +46,13 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="username">Benutzername</label>
             <input
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              placeholder="Benutzername eingeben"
               autoComplete="username"
               autoFocus
               disabled={loading}
@@ -60,13 +60,13 @@ export default function Login() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">Passwort</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
+              placeholder="Passwort eingeben"
               autoComplete="current-password"
               disabled={loading}
             />
@@ -74,12 +74,12 @@ export default function Login() {
 
           <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
             <LogIn size={18} />
-            <span>{loading ? 'Signing in…' : 'Sign In'}</span>
+            <span>{loading ? 'Anmeldung…' : 'Anmelden'}</span>
           </button>
         </form>
 
         <div className="login-footer">
-          <p>Contact your administrator for credentials</p>
+          <p>Kontaktiere deinen Administrator für Zugangsdaten</p>
         </div>
       </div>
     </div>

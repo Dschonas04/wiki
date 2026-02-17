@@ -41,7 +41,7 @@ export default function KnowledgeGraph() {
       const data = await api.getGraph();
       setGraphData(data);
     } catch (err: any) {
-      setError(err.message || 'Failed to load graph data');
+      setError(err.message || 'Graph-Daten konnten nicht geladen werden');
     } finally {
       setLoading(false);
     }
@@ -70,7 +70,7 @@ export default function KnowledgeGraph() {
   // Color helpers
   const getNodeColor = (n: SimNode, hovered: boolean): string => {
     if (hovered) return '#f59e0b';
-    if (n.visibility === 'published') return 'var(--c-success, #10b981)';
+    if (n.workflowStatus === 'published') return 'var(--c-success, #10b981)';
     return 'var(--c-primary, #6366f1)';
   };
 
@@ -325,18 +325,18 @@ export default function KnowledgeGraph() {
     <div className="content-body">
       <div className="content-header">
         <div className="content-header-left">
-          <h1><Network size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} />Knowledge Graph</h1>
+          <h1><Network size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} />Wissensgraph</h1>
           {graphData && (
             <span style={{ fontSize: '0.85rem', color: 'var(--c-text-muted)' }}>
-              {pageCount} pages · {graphData.edges.length} connections
+              {pageCount} Seiten · {graphData.edges.length} Verbindungen
             </span>
           )}
         </div>
         <div className="content-header-actions">
-          <button className="btn btn-ghost" onClick={zoomIn} title="Zoom In"><ZoomIn size={18} /></button>
-          <button className="btn btn-ghost" onClick={zoomOut} title="Zoom Out"><ZoomOut size={18} /></button>
-          <button className="btn btn-ghost" onClick={resetZoom} title="Reset View"><Maximize2 size={18} /></button>
-          <button className="btn btn-secondary" onClick={loadGraph}><RefreshCw size={16} /> Refresh</button>
+          <button className="btn btn-ghost" onClick={zoomIn} title="Vergrößern"><ZoomIn size={18} /></button>
+          <button className="btn btn-ghost" onClick={zoomOut} title="Verkleinern"><ZoomOut size={18} /></button>
+          <button className="btn btn-ghost" onClick={resetZoom} title="Ansicht zurücksetzen"><Maximize2 size={18} /></button>
+          <button className="btn btn-secondary" onClick={loadGraph}><RefreshCw size={16} /> Aktualisieren</button>
         </div>
       </div>
 
@@ -344,7 +344,7 @@ export default function KnowledgeGraph() {
 
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 400, color: 'var(--c-text-muted)' }}>
-          Loading graph…
+          Graph wird geladen…
         </div>
       ) : (
         <div
@@ -375,12 +375,12 @@ export default function KnowledgeGraph() {
             display: 'flex', gap: 16, alignItems: 'center',
           }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-success)', display: 'inline-block' }} /> Published
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-success)', display: 'inline-block' }} /> Veröffentlicht
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-primary)', display: 'inline-block' }} /> Draft
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-primary)', display: 'inline-block' }} /> Entwurf
             </span>
-            <span style={{ opacity: 0.6 }}>Click to open · Scroll to zoom · Drag to pan</span>
+            <span style={{ opacity: 0.6 }}>Klicken zum Öffnen · Scrollen zum Zoomen · Ziehen zum Verschieben</span>
           </div>
           {hoveredNode && (
             <div style={{
@@ -389,7 +389,7 @@ export default function KnowledgeGraph() {
               pointerEvents: 'none', boxShadow: 'var(--shadow-sm)',
             }}>
               {hoveredNode.label}
-              {hoveredNode.visibility && <span style={{ marginLeft: 8, opacity: 0.6, fontSize: '0.75rem' }}>{hoveredNode.visibility}</span>}
+              {hoveredNode.workflowStatus && <span style={{ marginLeft: 8, opacity: 0.6, fontSize: '0.75rem' }}>{hoveredNode.workflowStatus}</span>}
             </div>
           )}
         </div>

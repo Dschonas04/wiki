@@ -7,8 +7,8 @@ import Loading from '../components/Loading';
 
 const ROLE_COLORS: Record<string, string> = {
   admin: 'red',
-  editor: 'blue',
-  viewer: 'gray',
+  auditor: 'orange',
+  user: 'gray',
 };
 
 export default function UsersPage() {
@@ -24,7 +24,7 @@ export default function UsersPage() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('viewer');
+  const [role, setRole] = useState('user');
 
   const loadUsers = async () => {
     try {
@@ -44,9 +44,9 @@ export default function UsersPage() {
     e.preventDefault();
     try {
       await api.createUser({ username, password, displayName, email, role });
-      showToast('User created', 'success');
+      showToast('Benutzer erstellt', 'success');
       setShowForm(false);
-      setUsername(''); setPassword(''); setDisplayName(''); setEmail(''); setRole('viewer');
+      setUsername(''); setPassword(''); setDisplayName(''); setEmail(''); setRole('user');
       loadUsers();
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -56,7 +56,7 @@ export default function UsersPage() {
   const handleRoleUpdate = async (id: number) => {
     try {
       await api.updateUser(id, { role: editRole });
-      showToast('Role updated', 'success');
+      showToast('Rolle aktualisiert', 'success');
       setEditId(null);
       loadUsers();
     } catch (err: any) {
@@ -67,7 +67,7 @@ export default function UsersPage() {
   const handleToggleActive = async (u: UserListItem) => {
     try {
       await api.updateUser(u.id, { isActive: !u.isActive });
-      showToast(`User ${u.isActive ? 'deactivated' : 'activated'}`, 'success');
+      showToast(`Benutzer ${u.isActive ? 'deaktiviert' : 'aktiviert'}`, 'success');
       loadUsers();
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -75,10 +75,10 @@ export default function UsersPage() {
   };
 
   const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
+    if (!confirm(`Benutzer "${name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
     try {
       await api.deleteUser(id);
-      showToast('User deleted', 'success');
+      showToast('Benutzer gelöscht', 'success');
       loadUsers();
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -88,16 +88,16 @@ export default function UsersPage() {
   const formatDate = (s?: string) =>
     s ? new Date(s).toLocaleDateString('de-DE', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
-  if (loading) return (<><PageHeader title="Users" /><div className="content-body"><Loading /></div></>);
+  if (loading) return (<><PageHeader title="Benutzerverwaltung" /><div className="content-body"><Loading /></div></>);
 
   return (
     <>
       <PageHeader
-        title="User Management"
-        subtitle={`${users.length} user${users.length !== 1 ? 's' : ''}`}
+        title="Benutzerverwaltung"
+        subtitle={`${users.length} Benutzer`}
         actions={
           <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? <><X size={18} /><span>Cancel</span></> : <><PlusCircle size={18} /><span>New User</span></>}
+            {showForm ? <><X size={18} /><span>Abbrechen</span></> : <><PlusCircle size={18} /><span>Neuer Benutzer</span></>}
           </button>
         }
       />
@@ -105,21 +105,21 @@ export default function UsersPage() {
       <div className="content-body">
         {showForm && (
           <div className="card" style={{ marginBottom: 24 }}>
-            <h3 style={{ marginBottom: 16 }}>Create User</h3>
+            <h3 style={{ marginBottom: 16 }}>Benutzer erstellen</h3>
             <form onSubmit={handleCreate} className="user-form">
               <div className="form-row">
                 <div className="form-group">
-                  <label>Username *</label>
+                  <label>Benutzername *</label>
                   <input value={username} onChange={(e) => setUsername(e.target.value)} required />
                 </div>
                 <div className="form-group">
-                  <label>Password *</label>
-                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} placeholder="Min 8 chars incl. letter, number, special" />
+                  <label>Passwort *</label>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} placeholder="Min. 8 Zeichen inkl. Buchstabe, Zahl, Sonderzeichen" />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Display Name</label>
+                  <label>Anzeigename</label>
                   <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
                 </div>
                 <div className="form-group">
@@ -129,15 +129,15 @@ export default function UsersPage() {
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Role</label>
+                  <label>Rolle</label>
                   <select value={role} onChange={(e) => setRole(e.target.value)}>
-                    <option value="viewer">Viewer</option>
-                    <option value="editor">Editor</option>
-                    <option value="admin">Admin</option>
+                    <option value="user">Benutzer</option>
+                    <option value="auditor">Auditor</option>
+                    <option value="admin">Administrator</option>
                   </select>
                 </div>
                 <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
-                  <button type="submit" className="btn btn-primary"><PlusCircle size={16} /> Create</button>
+                  <button type="submit" className="btn btn-primary"><PlusCircle size={16} /> Erstellen</button>
                 </div>
               </div>
             </form>
@@ -148,12 +148,12 @@ export default function UsersPage() {
           <table className="users-table">
             <thead>
               <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th>Source</th>
+                <th>Benutzer</th>
+                <th>Rolle</th>
+                <th>Quelle</th>
                 <th>Status</th>
-                <th>Last Login</th>
-                <th>Actions</th>
+                <th>Letzte Anmeldung</th>
+                <th>Aktionen</th>
               </tr>
             </thead>
             <tbody>
@@ -172,16 +172,16 @@ export default function UsersPage() {
                     {editId === u.id ? (
                       <div className="role-edit">
                         <select value={editRole} onChange={(e) => setEditRole(e.target.value)}>
-                          <option value="viewer">Viewer</option>
-                          <option value="editor">Editor</option>
-                          <option value="admin">Admin</option>
+                          <option value="user">Benutzer</option>
+                          <option value="auditor">Auditor</option>
+                          <option value="admin">Administrator</option>
                         </select>
                         <button className="icon-btn" onClick={() => handleRoleUpdate(u.id)} title="Save"><Check size={14} /></button>
                         <button className="icon-btn" onClick={() => setEditId(null)} title="Cancel"><X size={14} /></button>
                       </div>
                     ) : (
-                      <span className={`role-badge role-${ROLE_COLORS[u.role] || 'gray'}`}>
-                        <Shield size={12} /> {u.role}
+                      <span className={`role-badge role-${ROLE_COLORS[u.globalRole] || 'gray'}`}>
+                        <Shield size={12} /> {u.globalRole}
                       </span>
                     )}
                   </td>
@@ -194,7 +194,7 @@ export default function UsersPage() {
                   <td className="meta-text">{formatDate(u.lastLogin)}</td>
                   <td>
                     <div className="table-actions">
-                      <button className="icon-btn" title="Edit role" onClick={() => { setEditId(u.id); setEditRole(u.role); }}><Edit3 size={14} /></button>
+                      <button className="icon-btn" title="Rolle bearbeiten" onClick={() => { setEditId(u.id); setEditRole(u.globalRole); }}><Edit3 size={14} /></button>
                       <button className="icon-btn danger" title="Delete" onClick={() => handleDelete(u.id, u.username)}><Trash2 size={14} /></button>
                     </div>
                   </td>

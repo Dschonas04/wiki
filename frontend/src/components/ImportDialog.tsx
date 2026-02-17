@@ -1,20 +1,53 @@
+/**
+ * ImportDialog-Komponente (Import-Dialog für Wiki-Seiten)
+ *
+ * Ermöglicht das Importieren von Dateien als neue Wiki-Seiten.
+ * Unterstützte Formate: Markdown (.md), HTML (.html) und
+ * Textdateien (.txt). Der Dateiname wird automatisch als
+ * Seitentitel verwendet.
+ *
+ * Funktionen:
+ * - Drag-and-Drop Dateiauswahl
+ * - Automatische Erkennung des Inhaltstyps anhand der Dateiendung
+ * - Anzeige des Importstatus für jede Datei
+ * - Massenimport mehrerer Dateien gleichzeitig
+ */
+
+// React-Hooks für Zustand und Referenzen
 import { useState, useRef } from 'react';
+
+// Icons für den Import-Dialog
 import { X, Upload, FileText, Code, AlignLeft } from 'lucide-react';
+
+// API-Client für die Server-Kommunikation
 import { api } from '../api/client';
+
+// Toast-Benachrichtigungen für Erfolgs-/Fehlermeldungen
 import { useToast } from '../context/ToastContext';
 
+/**
+ * Schnittstelle für die ImportDialog-Eigenschaften
+ */
 interface ImportDialogProps {
+  /** Callback-Funktion zum Schließen des Dialogs */
   onClose: () => void;
+  /** Callback-Funktion, die nach erfolgreichem Import aufgerufen wird */
   onImported: () => void;
 }
 
 export default function ImportDialog({ onClose, onImported }: ImportDialogProps) {
+  // Ausgewählte Dateien für den Import
   const [files, setFiles] = useState<File[]>([]);
+  // Importvorgang läuft gerade
   const [importing, setImporting] = useState(false);
+  // Ergebnisse des Imports pro Datei (Erfolg/Fehler)
   const [results, setResults] = useState<{ name: string; ok: boolean; error?: string }[]>([]);
+  // Referenz auf das versteckte Datei-Eingabefeld
   const fileRef = useRef<HTMLInputElement>(null);
+  // Toast-Benachrichtigungsfunktion
   const { showToast } = useToast();
 
+  // Dateien aus dem Eingabefeld übernehmen und Ergebnisse zurücksetzen
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setFiles(Array.from(e.target.files));
@@ -22,23 +55,38 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
     }
   };
 
+  /**
+   * Erkennt den Inhaltstyp anhand der Dateiendung.
+   * HTML/HTM-Dateien werden als 'html' erkannt, alles andere als 'markdown'.
+   */
   const detectType = (name: string): 'markdown' | 'html' => {
     const ext = name.split('.').pop()?.toLowerCase();
     if (ext === 'html' || ext === 'htm') return 'html';
     return 'markdown';
   };
 
+  /**
+   * Erzeugt einen Seitentitel aus dem Dateinamen.
+   * Entfernt die Dateiendung, ersetzt Bindestriche/Unterstriche durch
+   * Leerzeichen und setzt Wortanfänge groß.
+   */
   const titleFromName = (name: string) =>
     name
       .replace(/\.(md|markdown|html|htm|txt|text)$/i, '')
       .replace(/[-_]/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase());
 
+  /**
+   * Importiert alle ausgewählten Dateien nacheinander.
+   * Für jede Datei wird der Inhalt gelesen, der Typ erkannt und
+   * eine neue Wiki-Seite über die API erstellt.
+   */
   const handleImport = async () => {
     if (files.length === 0) return;
     setImporting(true);
     const newResults: typeof results = [];
 
+    // Dateien sequentiell importieren
     for (const file of files) {
       try {
         const content = await file.text();
@@ -53,13 +101,18 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
 
     setResults(newResults);
     setImporting(false);
+    // Erfolgsmeldung anzeigen, wenn mindestens eine Datei importiert wurde
     const success = newResults.filter((r) => r.ok).length;
     if (success > 0) {
-      showToast(`${success} page${success > 1 ? 's' : ''} imported!`, 'success');
+      showToast(`${success} Seite${success > 1 ? 'n' : ''} importiert!`, 'success');
       onImported();
     }
   };
 
+  /**
+   * Gibt das passende Icon für eine Datei basierend auf der Endung zurück.
+   * HTML = Code-Icon, Markdown = FileText-Icon, sonst = AlignLeft-Icon
+   */
   const getIcon = (name: string) => {
     const ext = name.split('.').pop()?.toLowerCase();
     if (ext === 'html' || ext === 'htm') return <Code size={16} />;
@@ -68,11 +121,14 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
   };
 
   return (
+    // Overlay: Schließt den Dialog beim Klick auf den Hintergrund
     <div className="modal-overlay" onClick={onClose}>
+      {/* Dialog-Fenster: Verhindert Schließen beim Klick innerhalb */}
       <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+        {/* Dialog-Kopfbereich mit Titel und Schließen-Button */}
         <div className="modal-header">
           <h3>
-            <Upload size={18} /> Import Pages
+            <Upload size={18} /> Seiten importieren
           </h3>
           <button className="icon-btn" onClick={onClose}>
             <X size={18} />
@@ -80,11 +136,13 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
         </div>
 
         <div className="modal-body">
+          {/* Erklärungstext für unterstützte Dateiformate */}
           <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
-            Import Markdown (.md), HTML (.html) or plain text (.txt) files as wiki pages.
-            The filename becomes the page title.
+            Importiere Markdown (.md), HTML (.html) oder Textdateien (.txt) als Wiki-Seiten.
+            Der Dateiname wird als Seitentitel verwendet.
           </p>
 
+          {/* Drag-and-Drop-Bereich für die Dateiauswahl */}
           <div
             className="import-dropzone"
             onClick={() => fileRef.current?.click()}
@@ -103,12 +161,13 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
             }}
           >
             <Upload size={32} />
-            <span>Click or drag files here</span>
+            <span>Klicken oder Dateien hierher ziehen</span>
             <span className="text-muted" style={{ fontSize: '0.78rem' }}>
               .md, .html, .txt
             </span>
           </div>
 
+          {/* Verstecktes Datei-Eingabefeld (wird durch die Dropzone ausgelöst) */}
           <input
             ref={fileRef}
             type="file"
@@ -118,6 +177,7 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
             style={{ display: 'none' }}
           />
 
+          {/* Dateiliste: Zeigt die ausgewählten Dateien mit Icon, Name, Typ und Status an */}
           {files.length > 0 && (
             <div className="import-file-list">
               {files.map((f, i) => (
@@ -125,6 +185,7 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
                   {getIcon(f.name)}
                   <span className="import-file-name">{f.name}</span>
                   <span className="import-file-type">{detectType(f.name)}</span>
+                  {/* Importstatus: Häkchen für Erfolg, Kreuz mit Fehlermeldung bei Fehler */}
                   {results[i] && (
                     <span
                       className={`import-file-status ${results[i].ok ? 'success' : 'error'}`}
@@ -138,9 +199,10 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
           )}
         </div>
 
+        {/* Dialog-Fußbereich mit Schließen- und Import-Button */}
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>
-            Close
+            Schließen
           </button>
           <button
             className="btn btn-primary"
@@ -148,9 +210,10 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
             disabled={files.length === 0 || importing}
           >
             <Upload size={16} />
+            {/* Dynamischer Buttontext: Zeigt "Importing…" während des Imports */}
             {importing
-              ? 'Importing…'
-              : `Import ${files.length} file${files.length !== 1 ? 's' : ''}`}
+              ? 'Importiere…'
+              : `${files.length} Datei${files.length !== 1 ? 'en' : ''} importieren`}
           </button>
         </div>
       </div>

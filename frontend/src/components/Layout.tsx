@@ -1,5 +1,22 @@
+/**
+ * Layout-Komponente (Hauptlayout der Nexora-Anwendung)
+ *
+ * Bildet das Grundgerüst der gesamten Nexora-Anwendung.
+ * Enthält die Seitenleiste mit Navigation, Benutzerinformationen,
+ * globaler Suche und den Hauptinhaltsbereich (Outlet).
+ *
+ * Funktionen:
+ * - Responsive Seitenleiste mit mobiler Umschaltung
+ * - Globale Suchfunktion mit Tastaturkürzel (Cmd/Ctrl+K)
+ * - Navigationsmenü mit rollenbasierter Sichtbarkeit
+ * - Benutzeranzeige mit Rollenfarbe
+ * - Abmelden-Funktion
+ * - Veröffentlichungsanfragen-Zähler für Auditoren/Admins
+ */
+
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+
 import {
   Home,
   FileText,
@@ -12,13 +29,17 @@ import {
   LogOut,
   Shield,
   Star,
-  Share2,
   Search,
   Trash2,
   CheckSquare,
   Network,
   Settings as SettingsIcon,
+  Layers,
+  FolderOpen,
+  Lock,
+  Send,
 } from 'lucide-react';
+
 import { useAuth } from '../context/AuthContext';
 import { api, type WikiPage } from '../api/client';
 
@@ -26,29 +47,29 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, hasPermission, isAdmin } = useAuth();
+  const { user, logout, hasPermission, isAdmin, isAuditor } = useAuth();
 
-  // Pending approval count for admins
-  const [approvalCount, setApprovalCount] = useState(0);
+  // Anzahl der offenen Veröffentlichungsanträge (für Auditoren/Admins)
+  const [publishCount, setPublishCount] = useState(0);
 
   useEffect(() => {
-    if (isAdmin) {
-      api.getApprovalCount().then(r => setApprovalCount(r.count)).catch(() => {});
+    if (isAdmin || isAuditor) {
+      api.getPublishRequests('pending').then(r => setPublishCount(r.length)).catch(() => {});
       const interval = setInterval(() => {
-        api.getApprovalCount().then(r => setApprovalCount(r.count)).catch(() => {});
-      }, 30000); // poll every 30s
+        api.getPublishRequests('pending').then(r => setPublishCount(r.length)).catch(() => {});
+      }, 30000);
       return () => clearInterval(interval);
     }
-  }, [isAdmin]);
+  }, [isAdmin, isAuditor]);
 
-  // Global search state
+  // Globale Suchfunktion
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<WikiPage[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  // Keyboard shortcut: Ctrl/Cmd+K to focus search
+  // Tastaturkürzel: Strg/Cmd+K öffnet die Suche
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -61,7 +82,7 @@ export default function Layout() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // Click outside to close search
+  // Klick außerhalb der Suche schließt die Ergebnisse
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -72,7 +93,7 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Debounced search
+  // Verzögerte Suche (250ms Debounce)
   useEffect(() => {
     const q = searchQuery.trim();
     if (!q) { setSearchResults([]); return; }
@@ -87,7 +108,7 @@ export default function Layout() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Close search on navigation
+  // Suche beim Navigieren zurücksetzen
   useEffect(() => {
     setSearchOpen(false);
     setSearchQuery('');
@@ -95,18 +116,27 @@ export default function Layout() {
 
   const closeSidebar = () => setSidebarOpen(false);
 
+  // Deutsche Bezeichnungen für Rollen
+  const roleLabels: Record<string, string> = {
+    admin: 'Administrator',
+    auditor: 'Auditor',
+    user: 'Benutzer',
+  };
+
+  // Navigationsstruktur mit Nexora-spezifischen Bereichen
   const navItems: { to: string; icon: any; label: string; end: boolean; show: boolean; badge?: number }[] = [
-    { to: '/', icon: Home, label: 'Home', end: true, show: true },
-    { to: '/pages', icon: FileText, label: 'Pages', end: true, show: hasPermission('pages.read') },
-    { to: '/favorites', icon: Star, label: 'Favorites', end: true, show: true },
-    { to: '/shared', icon: Share2, label: 'Shared with me', end: true, show: true },
-    { to: '/trash', icon: Trash2, label: 'Trash', end: true, show: hasPermission('pages.read') },
-    { to: '/graph', icon: Network, label: 'Knowledge Graph', end: true, show: hasPermission('pages.read') },
-    { to: '/approvals', icon: CheckSquare, label: 'Approvals', end: true, show: isAdmin, badge: approvalCount > 0 ? approvalCount : undefined },
-    { to: '/users', icon: Users, label: 'Users', end: true, show: isAdmin },
-    { to: '/audit', icon: ScrollText, label: 'Audit Log', end: true, show: isAdmin },
-    { to: '/health', icon: Activity, label: 'System Health', end: true, show: hasPermission('health.read') },
-    { to: '/settings', icon: SettingsIcon, label: 'Settings', end: true, show: true },
+    { to: '/', icon: Home, label: 'Startseite', end: true, show: true },
+    { to: '/spaces', icon: Layers, label: 'Team-Bereiche', end: false, show: hasPermission('spaces.read') },
+    { to: '/private', icon: Lock, label: 'Mein Bereich', end: true, show: hasPermission('private.manage') },
+    { to: '/pages', icon: FileText, label: 'Alle Seiten', end: true, show: hasPermission('pages.read') },
+    { to: '/favorites', icon: Star, label: 'Favoriten', end: true, show: true },
+    { to: '/publishing', icon: Send, label: 'Veröffentlichung', end: false, show: true, badge: publishCount > 0 ? publishCount : undefined },
+    { to: '/trash', icon: Trash2, label: 'Papierkorb', end: true, show: hasPermission('pages.read') },
+    { to: '/graph', icon: Network, label: 'Wissensgraph', end: true, show: hasPermission('pages.read') },
+    { to: '/users', icon: Users, label: 'Benutzer', end: true, show: isAdmin },
+    { to: '/audit', icon: ScrollText, label: 'Audit-Protokoll', end: true, show: isAdmin || isAuditor },
+    { to: '/health', icon: Activity, label: 'Systemstatus', end: true, show: hasPermission('health.read') },
+    { to: '/settings', icon: SettingsIcon, label: 'Einstellungen', end: true, show: true },
   ];
 
   const handleLogout = async () => {
@@ -114,53 +144,59 @@ export default function Layout() {
     await logout();
   };
 
-  const roleColor = user?.role === 'admin' ? 'var(--color-danger)' : user?.role === 'editor' ? 'var(--color-primary)' : 'var(--color-text-secondary)';
+  // Rollenfarbe: Admin = Rot, Auditor = Orange, Benutzer = Sekundär
+  const roleColor = user?.globalRole === 'admin'
+    ? 'var(--color-danger)'
+    : user?.globalRole === 'auditor'
+      ? 'var(--color-warning, #f59e0b)'
+      : 'var(--color-text-secondary)';
 
   return (
     <div className="app">
-      {/* Mobile toggle */}
+      {/* Mobiler Umschalter */}
       <button
         className={`mobile-toggle ${sidebarOpen ? 'active' : ''}`}
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        aria-label="Toggle navigation"
+        aria-label="Navigation umschalten"
       >
         {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
-      {/* Overlay */}
+      {/* Overlay bei geöffneter mobiler Seitenleiste */}
       {sidebarOpen && <div className="overlay" onClick={closeSidebar} />}
 
-      {/* Sidebar */}
+      {/* Seitenleiste */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        {/* Nexora-Markenlogo */}
         <div className="sidebar-brand">
           <NavLink to="/" className="brand-link" onClick={closeSidebar}>
             <div className="brand-icon">
               <BookOpen size={22} />
             </div>
-            <span className="brand-text">Wiki</span>
+            <span className="brand-text">Nexora</span>
           </NavLink>
         </div>
 
-        {/* User info */}
+        {/* Benutzerinformationen */}
         {user && (
           <div className="sidebar-user">
             <div className="sidebar-user-avatar">{user.username[0].toUpperCase()}</div>
             <div className="sidebar-user-info">
               <span className="sidebar-user-name">{user.displayName || user.username}</span>
               <span className="sidebar-user-role" style={{ color: roleColor }}>
-                <Shield size={11} /> {user.role}
+                <Shield size={11} /> {roleLabels[user.globalRole] || user.globalRole}
               </span>
             </div>
           </div>
         )}
 
-        {/* Global Search */}
+        {/* Globale Suche */}
         <div className="sidebar-search" ref={searchRef}>
           <div className="sidebar-search-input" onClick={() => setSearchOpen(true)}>
             <Search size={15} />
             <input
               type="text"
-              placeholder="Search… ⌘K"
+              placeholder="Suchen… ⌘K"
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setSearchOpen(true); }}
               onFocus={() => setSearchOpen(true)}
@@ -169,9 +205,9 @@ export default function Layout() {
           {searchOpen && searchQuery.trim() && (
             <div className="sidebar-search-results">
               {searchLoading ? (
-                <div className="search-result-empty">Searching…</div>
+                <div className="search-result-empty">Suche läuft…</div>
               ) : searchResults.length === 0 ? (
-                <div className="search-result-empty">No results found</div>
+                <div className="search-result-empty">Keine Ergebnisse gefunden</div>
               ) : (
                 <>
                   {searchResults.map(page => (
@@ -199,7 +235,7 @@ export default function Layout() {
                     }}
                   >
                     <Search size={14} />
-                    <span>View all results</span>
+                    <span>Alle Ergebnisse anzeigen</span>
                   </button>
                 </>
               )}
@@ -207,6 +243,7 @@ export default function Layout() {
           )}
         </div>
 
+        {/* Hauptnavigation */}
         <nav className="sidebar-nav">
           <div className="nav-label">Navigation</div>
           {navItems.filter(n => n.show).map(({ to, icon: Icon, label, end, badge }) => (
@@ -226,10 +263,11 @@ export default function Layout() {
           ))}
         </nav>
 
+        {/* Fußzeile */}
         <div className="sidebar-footer">
           <button className="sidebar-logout" onClick={handleLogout}>
             <LogOut size={16} />
-            <span>Sign Out</span>
+            <span>Abmelden</span>
           </button>
           <div className="sidebar-footer-text">
             <span className="status-dot" />
@@ -238,7 +276,7 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
+      {/* Hauptinhaltsbereich */}
       <main className="main">
         <Outlet />
       </main>

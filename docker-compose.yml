@@ -3,7 +3,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: wiki-frontend
+    container_name: nexora-frontend
     restart: unless-stopped
     ports:
       - "8443:443"
@@ -12,7 +12,7 @@ services:
       wiki:
         condition: service_healthy
     networks:
-      - wiki-network
+      - nexora-network
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:80/healthz || exit 1"]
       interval: 15s
@@ -23,7 +23,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: wiki-app
+    container_name: nexora-app
     restart: unless-stopped
     environment:
       DB_HOST: db
@@ -48,7 +48,7 @@ services:
     volumes:
       - attachments_data:/app/uploads
     networks:
-      - wiki-network
+      - nexora-network
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q healthy"]
       interval: 15s
@@ -58,11 +58,11 @@ services:
 
   ldap:
     image: osixia/openldap:1.5.0
-    container_name: wiki-ldap
+    container_name: nexora-ldap
     restart: unless-stopped
     environment:
-      LDAP_ORGANISATION: "Wiki"
-      LDAP_DOMAIN: "wiki.local"
+      LDAP_ORGANISATION: "Nexora"
+      LDAP_DOMAIN: "nexora.local"
       LDAP_ADMIN_PASSWORD: ${LDAP_BIND_PW}
       LDAP_TLS: "false"
     volumes:
@@ -71,9 +71,9 @@ services:
       - ./config/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom
     command: "--copy-service --loglevel debug"
     networks:
-      - wiki-network
+      - nexora-network
     healthcheck:
-      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost -b dc=wiki,dc=local -D cn=admin,dc=wiki,dc=local -w $$LDAP_ADMIN_PASSWORD"]
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost -b dc=nexora,dc=local -D cn=admin,dc=nexora,dc=local -w $$LDAP_ADMIN_PASSWORD"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -81,7 +81,7 @@ services:
 
   db:
     image: postgres:15-alpine
-    container_name: wiki-db
+    container_name: nexora-db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}
@@ -95,19 +95,19 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - wiki-network
+      - nexora-network
 
 volumes:
   db_data:
-    name: wiki-db-data
+    name: nexora-db-data
   ldap_data:
-    name: wiki-ldap-data
+    name: nexora-ldap-data
   ldap_config:
-    name: wiki-ldap-config
+    name: nexora-ldap-config
   attachments_data:
-    name: wiki-attachments-data
+    name: nexora-attachments-data
 
 networks:
-  wiki-network:
-    name: wiki-network
+  nexora-network:
+    name: nexora-network
     driver: bridge

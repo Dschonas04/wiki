@@ -104,7 +104,7 @@ export default function Settings() {
                   </div>
                   <div className="settings-profile-row">
                     <span className="settings-label">Role</span>
-                    <span className={`settings-role-badge ${user?.role}`}>{user?.role}</span>
+                    <span className={`settings-role-badge ${user?.globalRole}`}>{user?.globalRole}</span>
                   </div>
                   <div className="settings-profile-row">
                     <span className="settings-label">Auth</span>

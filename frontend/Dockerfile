@@ -23,8 +23,8 @@ RUN apk add --no-cache openssl && \
     openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
       -keyout /etc/nginx/ssl/server.key \
       -out /etc/nginx/ssl/server.crt \
-      -subj "/C=DE/ST=Local/L=Local/O=Wiki/CN=localhost" \
-      -addext "subjectAltName=DNS:localhost,DNS:wiki.local,IP:127.0.0.1"
+      -subj "/C=DE/ST=Local/L=Local/O=Nexora/CN=localhost" \
+      -addext "subjectAltName=DNS:localhost,DNS:nexora.local,IP:127.0.0.1"
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/nginx.conf

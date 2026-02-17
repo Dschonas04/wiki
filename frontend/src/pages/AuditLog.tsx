@@ -48,13 +48,13 @@ export default function AuditLog() {
       hour: '2-digit', minute: '2-digit', second: '2-digit',
     });
 
-  if (loading && entries.length === 0) return (<><PageHeader title="Audit Log" /><div className="content-body"><Loading /></div></>);
+  if (loading && entries.length === 0) return (<><PageHeader title="Audit-Protokoll" /><div className="content-body"><Loading /></div></>);
 
   return (
     <>
       <PageHeader
-        title="Audit Log"
-        subtitle={`${total} event${total !== 1 ? 's' : ''} recorded`}
+        title="Audit-Protokoll"
+        subtitle={`${total} Systemereignisse`}
       />
 
       <div className="content-body">
@@ -62,10 +62,10 @@ export default function AuditLog() {
           <table className="users-table audit-table">
             <thead>
               <tr>
-                <th>Time</th>
-                <th>User</th>
-                <th>Action</th>
-                <th>Resource</th>
+                <th>Zeit</th>
+                <th>Benutzer</th>
+                <th>Aktion</th>
+                <th>Ressource</th>
                 <th>IP</th>
                 <th>Details</th>
               </tr>
@@ -96,17 +96,17 @@ export default function AuditLog() {
               disabled={offset === 0}
               onClick={() => load(Math.max(0, offset - limit))}
             >
-              <ChevronLeft size={16} /> Previous
+              <ChevronLeft size={16} /> Zurück
             </button>
             <span className="pagination-info">
-              {offset + 1}–{Math.min(offset + limit, total)} of {total}
+              {offset + 1}–{Math.min(offset + limit, total)} von {total}
             </span>
             <button
               className="btn btn-secondary btn-sm"
               disabled={offset + limit >= total}
               onClick={() => load(offset + limit)}
             >
-              Next <ChevronRight size={16} />
+              Weiter <ChevronRight size={16} />
             </button>
           </div>
         )}

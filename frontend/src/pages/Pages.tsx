@@ -33,7 +33,7 @@ export default function Pages() {
   const loadPages = async (tagId?: number | null) => {
     try {
       setLoading(true);
-      const data = await api.getPages(tagId ?? undefined);
+      const data = await api.getPages(tagId ? { tagId } : undefined);
       setPages(data);
     } catch (err: any) {
       setError(err.message);
@@ -75,7 +75,7 @@ export default function Pages() {
     try {
       await api.deletePage(id);
       setPages((prev) => prev.filter((p) => p.id !== id));
-      showToast('Page moved to trash', 'success');
+      showToast('Seite in Papierkorb verschoben', 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -100,7 +100,7 @@ export default function Pages() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Pages" />
+        <PageHeader title="Seiten" />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -109,10 +109,10 @@ export default function Pages() {
   if (error) {
     return (
       <>
-        <PageHeader title="Pages" />
+        <PageHeader title="Seiten" />
         <div className="content-body">
           <div className="card error-card">
-            <p>Could not load pages: {error}</p>
+            <p>Seiten konnten nicht geladen werden: {error}</p>
           </div>
         </div>
       </>
@@ -122,22 +122,22 @@ export default function Pages() {
   return (
     <>
       <PageHeader
-        title="Pages"
-        subtitle={`${pages.length} page${pages.length !== 1 ? 's' : ''} in your wiki`}
+        title="Seiten"
+        subtitle={`${pages.length} Seiten in Nexora`}
         actions={
           <div className="btn-row">
             <button className="btn btn-secondary" onClick={() => setShowImport(true)}>
               <Upload size={16} />
-              <span>Import</span>
+              <span>Importieren</span>
             </button>
             <a href={api.exportAll()} className="btn btn-secondary" download>
               <Download size={16} />
-              <span>Export All</span>
+              <span>Alle exportieren</span>
             </a>
             {canCreate && (
               <Link to="/pages/new" className="btn btn-primary">
                 <PlusCircle size={18} />
-                <span>New Page</span>
+                <span>Neue Seite</span>
               </Link>
             )}
           </div>
@@ -150,7 +150,7 @@ export default function Pages() {
           <Search size={18} className="search-icon" />
           <input
             type="text"
-            placeholder="Search pages…"
+            placeholder="Seiten durchsuchen…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -184,20 +184,20 @@ export default function Pages() {
         {filtered.length === 0 && !search ? (
           <EmptyState
             icon={<FileText size={48} />}
-            title="No pages yet"
-            description="Create your first page to get started!"
+            title="Noch keine Seiten"
+            description="Erstelle deine erste Seite!"
             action={
               <Link to="/pages/new" className="btn btn-primary">
                 <PlusCircle size={18} />
-                <span>Create Page</span>
+                <span>Seite erstellen</span>
               </Link>
             }
           />
         ) : filtered.length === 0 && search ? (
           <EmptyState
             icon={<Search size={48} />}
-            title="No results"
-            description={`No pages matching "${search}"`}
+            title="Keine Ergebnisse"
+            description={`Keine Seiten für "${search}" gefunden`}
           />
         ) : (
           <div className="pages-grid">
@@ -217,14 +217,14 @@ export default function Pages() {
                     )}
                     {page.title}
                     {page.content_type === 'html' && <span className="badge badge-html">HTML</span>}
-                    {page.visibility === 'draft' && <span className="badge badge-draft">Draft</span>}
+                    {page.workflow_status && page.workflow_status !== 'published' && <span className="badge badge-draft">{({'draft':'Entwurf','in_review':'In Prüfung','changes_requested':'Änderungen','approved':'Genehmigt','archived':'Archiviert'} as Record<string,string>)[page.workflow_status] || page.workflow_status}</span>}
                   </Link>
                   <div className="page-card-actions">
                     {canEdit && (
                       <Link
                         to={`/pages/${page.id}/edit`}
                         className="icon-btn"
-                        title="Edit"
+                        title="Bearbeiten"
                       >
                         <Edit3 size={15} />
                       </Link>
@@ -232,7 +232,7 @@ export default function Pages() {
                     {canDelete && (
                       <button
                         className="icon-btn danger"
-                        title="Delete"
+                        title="Löschen"
                         onClick={() => setConfirmDelete({ id: page.id, title: page.title })}
                       >
                         <Trash2 size={15} />
@@ -285,9 +285,9 @@ export default function Pages() {
 
       {confirmDelete && (
         <ConfirmDialog
-          title="Delete Page?"
-          message={`"${confirmDelete.title}" will be moved to trash. You can restore it later.`}
-          confirmLabel="Move to Trash"
+          title="Seite löschen?"
+          message={`"${confirmDelete.title}" wird in den Papierkorb verschoben.`}
+          confirmLabel="In Papierkorb verschieben"
           variant="danger"
           onConfirm={() => handleDelete(confirmDelete.id, confirmDelete.title)}
           onCancel={() => setConfirmDelete(null)}

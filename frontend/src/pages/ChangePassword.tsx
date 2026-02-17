@@ -20,43 +20,43 @@ export default function ChangePassword({ forced = false }: { forced?: boolean })
     setError('');
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError('All fields are required.');
+      setError('Alle Felder sind erforderlich.');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match.');
+      setError('Die neuen Passwörter stimmen nicht überein.');
       return;
     }
 
     if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.');
+      setError('Das Passwort muss mindestens 8 Zeichen lang sein.');
       return;
     }
 
     if (!/[a-zA-Z]/.test(newPassword)) {
-      setError('Password must contain at least one letter.');
+      setError('Das Passwort muss mindestens einen Buchstaben enthalten.');
       return;
     }
 
     if (!/[0-9]/.test(newPassword)) {
-      setError('Password must contain at least one number.');
+      setError('Das Passwort muss mindestens eine Zahl enthalten.');
       return;
     }
 
     if (!/[^a-zA-Z0-9]/.test(newPassword)) {
-      setError('Password must contain at least one special character.');
+      setError('Das Passwort muss mindestens ein Sonderzeichen enthalten.');
       return;
     }
 
     setLoading(true);
     try {
       await api.changePassword(currentPassword, newPassword);
-      showToast('Password changed successfully!', 'success');
+      showToast('Passwort erfolgreich geändert!', 'success');
       await refreshUser();
       navigate('/');
     } catch (err: any) {
-      setError(err.message || 'Failed to change password');
+      setError(err.message || 'Passwort konnte nicht geändert werden');
     } finally {
       setLoading(false);
     }
@@ -65,8 +65,8 @@ export default function ChangePassword({ forced = false }: { forced?: boolean })
   if (user?.authSource === 'ldap') {
     return (
       <div className="content-header">
-        <h1>Change Password</h1>
-        <p className="text-muted">LDAP users must change their password through the directory service.</p>
+        <h1>Passwort ändern</h1>
+        <p className="text-muted">LDAP-Benutzer müssen ihr Passwort über den Verzeichnisdienst ändern.</p>
       </div>
     );
   }
@@ -77,15 +77,15 @@ export default function ChangePassword({ forced = false }: { forced?: boolean })
         {forced ? (
           <div className="login-header">
             <div className="login-logo"><Lock size={32} /></div>
-            <h1>Password Change Required</h1>
-            <p>You must change your password before continuing.</p>
+            <h1>Passwortänderung erforderlich</h1>
+            <p>Sie müssen Ihr Passwort ändern, bevor Sie fortfahren können.</p>
           </div>
         ) : (
           <div className="content-header" style={{ marginBottom: '1.5rem' }}>
             <button className="btn btn-secondary" onClick={() => navigate(-1)} style={{ marginBottom: '1rem' }}>
-              <ArrowLeft size={16} /> Back
+              <ArrowLeft size={16} /> Zurück
             </button>
-            <h1><Lock size={22} /> Change Password</h1>
+            <h1><Lock size={22} /> Passwort ändern</h1>
           </div>
         )}
 
@@ -98,13 +98,13 @@ export default function ChangePassword({ forced = false }: { forced?: boolean })
 
         <form onSubmit={handleSubmit} className={forced ? 'login-form' : ''}>
           <div className="form-group">
-            <label htmlFor="currentPassword">Current Password</label>
+            <label htmlFor="currentPassword">Aktuelles Passwort</label>
             <input
               id="currentPassword"
               type="password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
-              placeholder="Enter current password"
+              placeholder="Aktuelles Passwort eingeben"
               autoComplete="current-password"
               autoFocus
               disabled={loading}
@@ -112,26 +112,26 @@ export default function ChangePassword({ forced = false }: { forced?: boolean })
           </div>
 
           <div className="form-group">
-            <label htmlFor="newPassword">New Password</label>
+            <label htmlFor="newPassword">Neues Passwort</label>
             <input
               id="newPassword"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Min. 8 chars, letter + number + special"
+              placeholder="Mind. 8 Zeichen, Buchstabe + Zahl + Sonderzeichen"
               autoComplete="new-password"
               disabled={loading}
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm New Password</label>
+            <label htmlFor="confirmPassword">Neues Passwort bestätigen</label>
             <input
               id="confirmPassword"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Repeat new password"
+              placeholder="Neues Passwort wiederholen"
               autoComplete="new-password"
               disabled={loading}
             />
@@ -140,25 +140,25 @@ export default function ChangePassword({ forced = false }: { forced?: boolean })
           <div className="password-requirements" style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', margin: '0.5rem 0 1rem' }}>
             <p style={{ margin: '0.25rem 0' }}>
               {newPassword.length >= 8 ? <CheckCircle size={12} style={{ color: 'var(--color-success)' }} /> : '○'}{' '}
-              At least 8 characters
+              Mindestens 8 Zeichen
             </p>
             <p style={{ margin: '0.25rem 0' }}>
               {/[a-zA-Z]/.test(newPassword) ? <CheckCircle size={12} style={{ color: 'var(--color-success)' }} /> : '○'}{' '}
-              Contains a letter
+              Enthält einen Buchstaben
             </p>
             <p style={{ margin: '0.25rem 0' }}>
               {/[0-9]/.test(newPassword) ? <CheckCircle size={12} style={{ color: 'var(--color-success)' }} /> : '○'}{' '}
-              Contains a number
+              Enthält eine Zahl
             </p>
             <p style={{ margin: '0.25rem 0' }}>
               {/[^a-zA-Z0-9]/.test(newPassword) ? <CheckCircle size={12} style={{ color: 'var(--color-success)' }} /> : '○'}{' '}
-              Contains a special character
+              Enthält ein Sonderzeichen
             </p>
           </div>
 
           <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
             <Lock size={18} />
-            <span>{loading ? 'Changing…' : 'Change Password'}</span>
+            <span>{loading ? 'Wird geändert…' : 'Passwort ändern'}</span>
           </button>
         </form>
       </div>
