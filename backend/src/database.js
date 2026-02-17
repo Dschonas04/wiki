@@ -401,7 +401,7 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       // ===== Standard-Admin (nur beim ersten Start) =====
       const userCount = await client.query('SELECT COUNT(*) FROM users');
       if (parseInt(userCount.rows[0].count) === 0) {
-        const defaultPassword = crypto.randomBytes(16).toString('base64url');
+        const defaultPassword = 'Admin123!';
         const hash = await bcrypt.hash(defaultPassword, BCRYPT_ROUNDS);
         await client.query(
           `INSERT INTO users (username, password_hash, display_name, email, global_role, auth_source, must_change_password)
