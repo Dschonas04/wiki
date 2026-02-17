@@ -11,6 +11,7 @@ export interface WikiPage {
   created_at: string;
   updated_at: string;
   visibility?: 'draft' | 'published';
+  approval_status?: 'none' | 'pending' | 'approved' | 'rejected';
 }
 
 export interface HealthData {
@@ -89,7 +90,24 @@ export interface Tag {
   name: string;
   color: string;
   page_count?: number;
+  created_by?: number;
   created_at: string;
+}
+
+export interface ApprovalRequest {
+  id: number;
+  page_id: number;
+  requested_by: number;
+  requested_by_name?: string;
+  requested_by_display?: string;
+  reviewer_id?: number;
+  reviewer_name?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  comment?: string;
+  page_title?: string;
+  page_visibility?: string;
+  created_at: string;
+  resolved_at?: string;
 }
 
 export interface FavoritePage extends WikiPage {
@@ -258,6 +276,22 @@ export const api = {
   // Visibility
   setPageVisibility: (pageId: number | string, visibility: 'draft' | 'published') =>
     request<WikiPage>('PUT', `/pages/${pageId}/visibility`, { visibility }),
+
+  // Approvals
+  requestApproval: (pageId: number | string) =>
+    request<ApprovalRequest>('POST', `/pages/${pageId}/request-approval`),
+  cancelApproval: (pageId: number | string) =>
+    request<{ message: string }>('POST', `/pages/${pageId}/cancel-approval`),
+  getApprovals: (status = 'pending') =>
+    request<ApprovalRequest[]>('GET', `/approvals?status=${status}`),
+  getApprovalCount: () =>
+    request<{ count: number }>('GET', '/approvals/count'),
+  approveRequest: (id: number, comment?: string) =>
+    request<{ message: string }>('POST', `/approvals/${id}/approve`, { comment }),
+  rejectRequest: (id: number, comment?: string) =>
+    request<{ message: string }>('POST', `/approvals/${id}/reject`, { comment }),
+  getPageApprovalStatus: (pageId: number | string) =>
+    request<ApprovalRequest | null>('GET', `/pages/${pageId}/approval-status`),
 
   // Attachments
   getAttachments: (pageId: number | string) =>

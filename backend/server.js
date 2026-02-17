@@ -394,6 +394,44 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       `);
       await client.query('CREATE INDEX IF NOT EXISTS idx_attachments_page ON wiki_attachments(page_id)');
 
+      // ===== Migration: Approval system =====
+      await client.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_pages' AND column_name='approval_status') THEN
+            ALTER TABLE wiki_pages ADD COLUMN approval_status VARCHAR(20) DEFAULT 'none';
+          END IF;
+        END; $$
+      `);
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS approval_requests (
+          id SERIAL PRIMARY KEY,
+          page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+          requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          reviewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          comment TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          resolved_at TIMESTAMP,
+          CONSTRAINT valid_approval_status CHECK (status IN ('pending', 'approved', 'rejected'))
+        )
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_approvals_page ON approval_requests(page_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_approvals_status ON approval_requests(status)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_approvals_requested ON approval_requests(requested_by)');
+
+      // ===== Migration: Tags per user =====
+      await client.query(`
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='wiki_tags' AND column_name='created_by') THEN
+            ALTER TABLE wiki_tags ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+            ALTER TABLE wiki_tags DROP CONSTRAINT IF EXISTS wiki_tags_name_key;
+            ALTER TABLE wiki_tags ADD CONSTRAINT wiki_tags_name_user_unique UNIQUE (name, created_by);
+          END IF;
+        END; $$
+      `);
+      await client.query('CREATE INDEX IF NOT EXISTS idx_tags_created_by ON wiki_tags(created_by)');
+
       console.log('Database schema initialized');
       client.release();
       pool = testPool;
@@ -1188,7 +1226,7 @@ app.post('/api/pages/:id/restore', authenticate, requirePermission('pages.edit')
   }
 });
 
-// Toggle page visibility (publish / unpublish)
+// Toggle page visibility (publish / unpublish) — only admins can directly publish
 app.put('/api/pages/:id/visibility', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   const id = parseInt(req.params.id);
@@ -1202,12 +1240,181 @@ app.put('/api/pages/:id/visibility', authenticate, requirePermission('pages.edit
     if (req.user.role !== 'admin' && page.rows[0].created_by !== req.user.id) {
       return res.status(403).json({ error: 'Only the page owner or an admin can change visibility' });
     }
-    const result = await pool.query('UPDATE wiki_pages SET visibility = $1 WHERE id = $2 RETURNING *', [visibility, id]);
+    // Non-admins cannot directly publish — must request approval
+    if (visibility === 'published' && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Publishing requires admin approval. Please request approval instead.' });
+    }
+    const newApprovalStatus = visibility === 'published' ? 'approved' : 'none';
+    const result = await pool.query('UPDATE wiki_pages SET visibility = $1, approval_status = $2 WHERE id = $3 RETURNING *', [visibility, newApprovalStatus, id]);
+    // Resolve any pending approval requests when admin directly publishes or unpublishes
+    if (visibility === 'published') {
+      await pool.query(
+        "UPDATE approval_requests SET status = 'approved', reviewer_id = $1, resolved_at = CURRENT_TIMESTAMP WHERE page_id = $2 AND status = 'pending'",
+        [req.user.id, id]
+      );
+    }
     await auditLog(req.user.id, req.user.username, visibility === 'published' ? 'publish_page' : 'unpublish_page', 'page', id, { title: page.rows[0].title }, getIp(req));
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error changing visibility:', err.message);
     res.status(500).json({ error: 'Failed to change page visibility' });
+  }
+});
+
+// ==================== APPROVAL SYSTEM ====================
+
+// Request approval to publish a page (non-admins)
+app.post('/api/pages/:id/request-approval', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const page = await pool.query('SELECT * FROM wiki_pages WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (page.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+    if (page.rows[0].created_by !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the page owner can request approval' });
+    }
+    if (page.rows[0].visibility === 'published') {
+      return res.status(400).json({ error: 'Page is already published' });
+    }
+    const existing = await pool.query(
+      "SELECT id FROM approval_requests WHERE page_id = $1 AND status = 'pending'", [id]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'An approval request is already pending for this page' });
+    }
+    const result = await pool.query(
+      'INSERT INTO approval_requests (page_id, requested_by) VALUES ($1, $2) RETURNING *',
+      [id, req.user.id]
+    );
+    await pool.query("UPDATE wiki_pages SET approval_status = 'pending' WHERE id = $1", [id]);
+    await auditLog(req.user.id, req.user.username, 'request_approval', 'page', id, { title: page.rows[0].title }, getIp(req));
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error requesting approval:', err.message);
+    res.status(500).json({ error: 'Failed to request approval' });
+  }
+});
+
+// Cancel an approval request (owner only)
+app.post('/api/pages/:id/cancel-approval', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const page = await pool.query('SELECT * FROM wiki_pages WHERE id = $1 AND deleted_at IS NULL', [id]);
+    if (page.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+    if (page.rows[0].created_by !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the page owner or admin can cancel the approval request' });
+    }
+    await pool.query(
+      "UPDATE approval_requests SET status = 'rejected', comment = 'Cancelled by owner', resolved_at = CURRENT_TIMESTAMP WHERE page_id = $1 AND status = 'pending'",
+      [id]
+    );
+    await pool.query("UPDATE wiki_pages SET approval_status = 'none' WHERE id = $1", [id]);
+    res.json({ message: 'Approval request cancelled' });
+  } catch (err) {
+    console.error('Error cancelling approval:', err.message);
+    res.status(500).json({ error: 'Failed to cancel approval request' });
+  }
+});
+
+// List approval requests (admin only)
+app.get('/api/approvals', authenticate, requirePermission('users.manage'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const status = (req.query.status || 'pending').toString();
+  try {
+    const result = await pool.query(`
+      SELECT a.*, p.title AS page_title, p.visibility AS page_visibility,
+             u.username AS requested_by_name, u.display_name AS requested_by_display,
+             r.username AS reviewer_name
+      FROM approval_requests a
+      JOIN wiki_pages p ON a.page_id = p.id
+      JOIN users u ON a.requested_by = u.id
+      LEFT JOIN users r ON a.reviewer_id = r.id
+      WHERE a.status = $1
+      ORDER BY a.created_at DESC`, [status]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error listing approvals:', err.message);
+    res.status(500).json({ error: 'Failed to retrieve approvals' });
+  }
+});
+
+// Get pending approval count (for badge)
+app.get('/api/approvals/count', authenticate, requirePermission('users.manage'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const result = await pool.query("SELECT COUNT(*) FROM approval_requests WHERE status = 'pending'");
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to count approvals' });
+  }
+});
+
+// Approve a request (admin only)
+app.post('/api/approvals/:id/approve', authenticate, requirePermission('users.manage'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid request ID' });
+  const { comment } = req.body || {};
+  try {
+    const request = await pool.query('SELECT * FROM approval_requests WHERE id = $1', [id]);
+    if (request.rows.length === 0) return res.status(404).json({ error: 'Approval request not found' });
+    if (request.rows[0].status !== 'pending') return res.status(400).json({ error: 'Request is not pending' });
+    await pool.query(
+      'UPDATE approval_requests SET status = $1, reviewer_id = $2, comment = $3, resolved_at = CURRENT_TIMESTAMP WHERE id = $4',
+      ['approved', req.user.id, comment || null, id]
+    );
+    await pool.query("UPDATE wiki_pages SET visibility = 'published', approval_status = 'approved' WHERE id = $1", [request.rows[0].page_id]);
+    await auditLog(req.user.id, req.user.username, 'approve_page', 'page', request.rows[0].page_id, { approval_id: id, comment }, getIp(req));
+    res.json({ message: 'Page approved and published' });
+  } catch (err) {
+    console.error('Error approving page:', err.message);
+    res.status(500).json({ error: 'Failed to approve page' });
+  }
+});
+
+// Reject a request (admin only)
+app.post('/api/approvals/:id/reject', authenticate, requirePermission('users.manage'), writeLimiter, async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid request ID' });
+  const { comment } = req.body || {};
+  try {
+    const request = await pool.query('SELECT * FROM approval_requests WHERE id = $1', [id]);
+    if (request.rows.length === 0) return res.status(404).json({ error: 'Approval request not found' });
+    if (request.rows[0].status !== 'pending') return res.status(400).json({ error: 'Request is not pending' });
+    await pool.query(
+      'UPDATE approval_requests SET status = $1, reviewer_id = $2, comment = $3, resolved_at = CURRENT_TIMESTAMP WHERE id = $4',
+      ['rejected', req.user.id, comment || null, id]
+    );
+    await pool.query("UPDATE wiki_pages SET approval_status = 'rejected' WHERE id = $1", [request.rows[0].page_id]);
+    await auditLog(req.user.id, req.user.username, 'reject_page', 'page', request.rows[0].page_id, { approval_id: id, comment }, getIp(req));
+    res.json({ message: 'Page approval rejected' });
+  } catch (err) {
+    console.error('Error rejecting page:', err.message);
+    res.status(500).json({ error: 'Failed to reject page' });
+  }
+});
+
+// Get latest approval status for a page
+app.get('/api/pages/:id/approval-status', authenticate, requirePermission('pages.read'), async (req, res) => {
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  try {
+    const result = await pool.query(`
+      SELECT a.*, r.username AS reviewer_name
+      FROM approval_requests a
+      LEFT JOIN users r ON a.reviewer_id = r.id
+      WHERE a.page_id = $1
+      ORDER BY a.created_at DESC
+      LIMIT 1`, [id]);
+    res.json(result.rows[0] || null);
+  } catch (err) {
+    console.error('Error getting approval status:', err.message);
+    res.status(500).json({ error: 'Failed to get approval status' });
   }
 });
 
@@ -1378,16 +1585,18 @@ app.delete('/api/attachments/:id', authenticate, requirePermission('pages.edit')
 
 // ==================== TAGS ====================
 
-// List all tags
+// List all tags (filtered by user — users see their own + global tags, admins see all)
 app.get('/api/tags', authenticate, async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const isAdmin = req.user.role === 'admin';
   try {
     const result = await pool.query(`
       SELECT t.*, COUNT(pt.page_id) AS page_count
       FROM wiki_tags t
       LEFT JOIN wiki_page_tags pt ON t.id = pt.tag_id
+      WHERE ${isAdmin ? 'TRUE' : '(t.created_by = $1 OR t.created_by IS NULL)'}
       GROUP BY t.id
-      ORDER BY t.name ASC`);
+      ORDER BY t.name ASC`, isAdmin ? [] : [req.user.id]);
     res.json(result.rows);
   } catch (err) {
     console.error('Error listing tags:', err.message);
@@ -1395,7 +1604,7 @@ app.get('/api/tags', authenticate, async (req, res) => {
   }
 });
 
-// Create tag (editor+)
+// Create tag (editor+) — scoped to current user
 app.post('/api/tags', authenticate, requirePermission('pages.create'), writeLimiter, async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   const { name, color } = req.body;
@@ -1404,22 +1613,28 @@ app.post('/api/tags', authenticate, requirePermission('pages.create'), writeLimi
   const tagColor = color && isValidColor(color) ? color : '#6366f1';
   try {
     const result = await pool.query(
-      'INSERT INTO wiki_tags (name, color) VALUES ($1, $2) RETURNING *',
-      [name.trim().toLowerCase(), tagColor]
+      'INSERT INTO wiki_tags (name, color, created_by) VALUES ($1, $2, $3) RETURNING *',
+      [name.trim().toLowerCase(), tagColor, req.user.id]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'Tag already exists.' });
+    if (err.code === '23505') return res.status(409).json({ error: 'You already have a tag with this name.' });
     console.error('Error creating tag:', err.message);
     res.status(500).json({ error: 'Failed to create tag' });
   }
 });
 
-// Delete tag (admin only)
-app.delete('/api/tags/:id', authenticate, requirePermission('users.manage'), writeLimiter, async (req, res) => {
+// Delete tag (owner or admin)
+app.delete('/api/tags/:id', authenticate, requirePermission('pages.create'), writeLimiter, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid tag ID' });
   try {
+    const tag = await pool.query('SELECT * FROM wiki_tags WHERE id = $1', [id]);
+    if (tag.rows.length === 0) return res.status(404).json({ error: 'Tag not found' });
+    // Only owner or admin can delete
+    if (req.user.role !== 'admin' && tag.rows[0].created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Only the tag owner or an admin can delete this tag' });
+    }
     const result = await pool.query('DELETE FROM wiki_tags WHERE id = $1 RETURNING *', [id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Tag not found' });
     res.json({ message: 'Tag deleted' });
@@ -1429,16 +1644,17 @@ app.delete('/api/tags/:id', authenticate, requirePermission('users.manage'), wri
   }
 });
 
-// Get tags for a page
+// Get tags for a page (user sees their own + global tags)
 app.get('/api/pages/:id/tags', authenticate, requirePermission('pages.read'), async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+  const isAdmin = req.user.role === 'admin';
   try {
     const result = await pool.query(
       `SELECT t.* FROM wiki_tags t
        JOIN wiki_page_tags pt ON t.id = pt.tag_id
-       WHERE pt.page_id = $1
-       ORDER BY t.name ASC`, [id]
+       WHERE pt.page_id = $1 AND ${isAdmin ? 'TRUE' : '(t.created_by = $2 OR t.created_by IS NULL)'}
+       ORDER BY t.name ASC`, isAdmin ? [id] : [id, req.user.id]
     );
     res.json(result.rows);
   } catch (err) {
@@ -1447,20 +1663,28 @@ app.get('/api/pages/:id/tags', authenticate, requirePermission('pages.read'), as
   }
 });
 
-// Set tags for a page (replaces all)
+// Set tags for a page (replaces current user's tags only, keeps other users' tags)
 app.put('/api/pages/:id/tags', authenticate, requirePermission('pages.edit'), writeLimiter, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
   const { tagIds } = req.body;
   if (!Array.isArray(tagIds)) return res.status(400).json({ error: 'tagIds must be an array.' });
+  const isAdmin = req.user.role === 'admin';
   try {
-    await pool.query('DELETE FROM wiki_page_tags WHERE page_id = $1', [id]);
+    // Only remove tags belonging to current user (or global), not other users' tags
+    await pool.query(
+      `DELETE FROM wiki_page_tags WHERE page_id = $1 AND tag_id IN (
+        SELECT id FROM wiki_tags WHERE ${isAdmin ? 'TRUE' : '(created_by = $2 OR created_by IS NULL)'}
+      )`, isAdmin ? [id] : [id, req.user.id]
+    );
     for (const tagId of tagIds) {
       await pool.query('INSERT INTO wiki_page_tags (page_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, tagId]);
     }
     const result = await pool.query(
-      `SELECT t.* FROM wiki_tags t JOIN wiki_page_tags pt ON t.id = pt.tag_id WHERE pt.page_id = $1 ORDER BY t.name`,
-      [id]
+      `SELECT t.* FROM wiki_tags t JOIN wiki_page_tags pt ON t.id = pt.tag_id
+       WHERE pt.page_id = $1 AND ${isAdmin ? 'TRUE' : '(t.created_by = $2 OR t.created_by IS NULL)'}
+       ORDER BY t.name`,
+      isAdmin ? [id] : [id, req.user.id]
     );
     res.json(result.rows);
   } catch (err) {

@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2, Eye, EyeOff, Paperclip, Upload, X, List } from 'lucide-react';
+import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Share2, Eye, EyeOff, Paperclip, Upload, X, List, CheckCircle, Clock, XCircle, Send } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { api, type WikiPage, type Tag as TagType, type Attachment } from '../api/client';
+import { api, type WikiPage, type Tag as TagType, type Attachment, type ApprovalRequest } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
@@ -28,6 +28,8 @@ export default function PageView() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteAtt, setConfirmDeleteAtt] = useState<Attachment | null>(null);
   const [showToc, setShowToc] = useState(false);
+  const [approvalStatus, setApprovalStatus] = useState<ApprovalRequest | null>(null);
+  const [approvalLoading, setApprovalLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
@@ -45,6 +47,7 @@ export default function PageView() {
       api.checkFavorite(id).then(r => setFavorited(r.favorited)).catch(() => {}),
       api.getPageTags(id).then(setTags).catch(() => {}),
       api.getAttachments(id).then(setAttachments).catch(() => {}),
+      api.getPageApprovalStatus(id).then(setApprovalStatus).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [id]);
 
@@ -115,13 +118,60 @@ export default function PageView() {
 
   const toggleVisibility = async () => {
     if (!page) return;
-    const newVis = page.visibility === 'published' ? 'draft' : 'published';
+    // Admin can directly publish/unpublish
+    if (isAdmin) {
+      const newVis = page.visibility === 'published' ? 'draft' : 'published';
+      try {
+        const updated = await api.setPageVisibility(page.id, newVis);
+        setPage(updated);
+        if (newVis === 'published') {
+          setApprovalStatus(null); // clear pending status
+        }
+        showToast(newVis === 'published' ? 'Page published — now visible to all users' : 'Page set to draft — only visible to you', 'success');
+      } catch (err: any) {
+        showToast(err.message, 'error');
+      }
+    } else {
+      // Non-admin can only unpublish (set to draft)
+      if (page.visibility === 'published') {
+        try {
+          const updated = await api.setPageVisibility(page.id, 'draft');
+          setPage(updated);
+          showToast('Page set to draft', 'success');
+        } catch (err: any) {
+          showToast(err.message, 'error');
+        }
+      }
+    }
+  };
+
+  const requestApproval = async () => {
+    if (!page || !id) return;
+    setApprovalLoading(true);
     try {
-      const updated = await api.setPageVisibility(page.id, newVis);
-      setPage(updated);
-      showToast(newVis === 'published' ? 'Page published — now visible to all users' : 'Page set to draft — only visible to you', 'success');
+      const result = await api.requestApproval(page.id);
+      setApprovalStatus(result);
+      setPage({ ...page, approval_status: 'pending' });
+      showToast('Approval request sent — an admin will review your page', 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
+    } finally {
+      setApprovalLoading(false);
+    }
+  };
+
+  const cancelApproval = async () => {
+    if (!page || !id) return;
+    setApprovalLoading(true);
+    try {
+      await api.cancelApproval(page.id);
+      setApprovalStatus(null);
+      setPage({ ...page, approval_status: 'none' });
+      showToast('Approval request cancelled', 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setApprovalLoading(false);
     }
   };
 
@@ -245,14 +295,48 @@ export default function PageView() {
         title={page.title}
         actions={
           <div className="btn-row">
-            {canChangeVisibility && (
+            {/* Admin: direct publish/unpublish */}
+            {isAdmin && (
               <button
                 className={`btn ${page.visibility === 'published' ? 'btn-secondary' : 'btn-success'}`}
                 onClick={toggleVisibility}
-                title={page.visibility === 'published' ? 'Set to draft (hide from others)' : 'Publish (make visible to all)'}
+                title={page.visibility === 'published' ? 'Set to draft (hide from others)' : 'Publish directly (admin)'}
               >
                 {page.visibility === 'published' ? <EyeOff size={16} /> : <Eye size={16} />}
                 <span>{page.visibility === 'published' ? 'Unpublish' : 'Publish'}</span>
+              </button>
+            )}
+            {/* Non-admin owner: request approval or cancel */}
+            {!isAdmin && isOwner && page.visibility !== 'published' && (
+              <>
+                {page.approval_status === 'pending' ? (
+                  <button
+                    className="btn btn-warning"
+                    onClick={cancelApproval}
+                    disabled={approvalLoading}
+                    title="Cancel approval request"
+                  >
+                    <Clock size={16} />
+                    <span>Pending…</span>
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-success"
+                    onClick={requestApproval}
+                    disabled={approvalLoading}
+                    title="Request admin approval to publish this page"
+                  >
+                    <Send size={16} />
+                    <span>Request Approval</span>
+                  </button>
+                )}
+              </>
+            )}
+            {/* Non-admin owner: can unpublish */}
+            {!isAdmin && isOwner && page.visibility === 'published' && (
+              <button className="btn btn-secondary" onClick={toggleVisibility} title="Set to draft">
+                <EyeOff size={16} />
+                <span>Unpublish</span>
               </button>
             )}
             <button
@@ -305,14 +389,49 @@ export default function PageView() {
       />
 
       <div className="content-body">
-        {/* Draft notice */}
-        {page.visibility !== 'published' && (
+        {/* Draft / Approval status notices */}
+        {page.visibility !== 'published' && page.approval_status === 'pending' && (
+          <div className="approval-banner pending">
+            <Clock size={16} />
+            <span>
+              <strong>Approval pending</strong> — this page is awaiting admin review before it can be published.
+            </span>
+            {(isOwner || isAdmin) && (
+              <button className="btn btn-sm btn-secondary" onClick={cancelApproval} disabled={approvalLoading}>
+                Cancel Request
+              </button>
+            )}
+          </div>
+        )}
+
+        {page.visibility !== 'published' && page.approval_status === 'rejected' && (
+          <div className="approval-banner rejected">
+            <XCircle size={16} />
+            <div>
+              <strong>Approval rejected</strong>
+              {approvalStatus?.comment && <span> — {approvalStatus.comment}</span>}
+              {approvalStatus?.reviewer_name && <span className="approval-reviewer"> by {approvalStatus.reviewer_name}</span>}
+            </div>
+            {isOwner && (
+              <button className="btn btn-sm btn-success" onClick={requestApproval} disabled={approvalLoading}>
+                <Send size={14} /> Re-request
+              </button>
+            )}
+          </div>
+        )}
+
+        {page.visibility !== 'published' && page.approval_status !== 'pending' && page.approval_status !== 'rejected' && (
           <div className="draft-banner">
             <EyeOff size={16} />
             <span>This page is a <strong>draft</strong> — only visible to you{isAdmin ? ' (admin)' : ''} and admins.</span>
-            {canChangeVisibility && (
+            {isAdmin && (
               <button className="btn btn-sm btn-success" onClick={toggleVisibility}>
                 <Eye size={14} /> Publish
+              </button>
+            )}
+            {!isAdmin && isOwner && (
+              <button className="btn btn-sm btn-success" onClick={requestApproval} disabled={approvalLoading}>
+                <Send size={14} /> Request Approval
               </button>
             )}
           </div>

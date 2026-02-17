@@ -19,6 +19,7 @@ import {
   Share2,
   Search,
   Trash2,
+  CheckSquare,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../hooks/useTheme';
@@ -30,6 +31,19 @@ export default function Layout() {
   const navigate = useNavigate();
   const { user, logout, hasPermission, isAdmin } = useAuth();
   const { theme, toggleTheme, isDark } = useTheme();
+
+  // Pending approval count for admins
+  const [approvalCount, setApprovalCount] = useState(0);
+
+  useEffect(() => {
+    if (isAdmin) {
+      api.getApprovalCount().then(r => setApprovalCount(r.count)).catch(() => {});
+      const interval = setInterval(() => {
+        api.getApprovalCount().then(r => setApprovalCount(r.count)).catch(() => {});
+      }, 30000); // poll every 30s
+      return () => clearInterval(interval);
+    }
+  }, [isAdmin]);
 
   // Global search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,12 +99,13 @@ export default function Layout() {
 
   const closeSidebar = () => setSidebarOpen(false);
 
-  const navItems = [
+  const navItems: { to: string; icon: any; label: string; end: boolean; show: boolean; badge?: number }[] = [
     { to: '/', icon: Home, label: 'Home', end: true, show: true },
     { to: '/pages', icon: FileText, label: 'Pages', end: true, show: hasPermission('pages.read') },
     { to: '/favorites', icon: Star, label: 'Favorites', end: true, show: true },
     { to: '/shared', icon: Share2, label: 'Shared with me', end: true, show: true },
     { to: '/trash', icon: Trash2, label: 'Trash', end: true, show: hasPermission('pages.read') },
+    { to: '/approvals', icon: CheckSquare, label: 'Approvals', end: true, show: isAdmin, badge: approvalCount > 0 ? approvalCount : undefined },
     { to: '/pages/new', icon: PlusCircle, label: 'New Page', end: true, show: hasPermission('pages.create') },
     { to: '/users', icon: Users, label: 'Users', end: true, show: isAdmin },
     { to: '/audit', icon: ScrollText, label: 'Audit Log', end: true, show: isAdmin },
@@ -198,7 +213,7 @@ export default function Layout() {
 
         <nav className="sidebar-nav">
           <div className="nav-label">Navigation</div>
-          {navItems.filter(n => n.show).map(({ to, icon: Icon, label, end }) => (
+          {navItems.filter(n => n.show).map(({ to, icon: Icon, label, end, badge }) => (
             <NavLink
               key={to}
               to={to}
@@ -210,6 +225,7 @@ export default function Layout() {
             >
               <Icon size={18} />
               <span>{label}</span>
+              {badge !== undefined && <span className="nav-badge">{badge}</span>}
             </NavLink>
           ))}
         </nav>
