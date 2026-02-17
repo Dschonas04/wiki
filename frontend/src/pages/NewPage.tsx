@@ -1,20 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Save, X, Code, FileText, Tag } from 'lucide-react';
+import { Save, X, Code, FileText, Tag, Eye, EyeOff } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType } from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
 import EditorToolbar from '../components/EditorToolbar';
 
 export default function NewPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [contentType, setContentType] = useState<'markdown' | 'html'>('markdown');
   const [parentId, setParentId] = useState<number | null>(null);
+  const [publishNow, setPublishNow] = useState(false);
   const [allPages, setAllPages] = useState<WikiPage[]>([]);
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
@@ -81,6 +85,7 @@ export default function NewPage() {
         content: content.trim(),
         parentId,
         contentType,
+        visibility: isAdmin && publishNow ? 'published' : 'draft',
       });
       if (selectedTagIds.length > 0) {
         await api.setPageTags(page.id, selectedTagIds).catch(() => {});
@@ -149,6 +154,42 @@ export default function NewPage() {
               </div>
             </div>
           </div>
+
+          {/* Admin: Publish toggle */}
+          {isAdmin && (
+            <div className="form-group">
+              <label>Visibility</label>
+              <div className="visibility-toggle">
+                <button
+                  type="button"
+                  className={`toggle-btn ${!publishNow ? 'active' : ''}`}
+                  onClick={() => setPublishNow(false)}
+                >
+                  <EyeOff size={14} /> Draft
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${publishNow ? 'active' : ''}`}
+                  onClick={() => setPublishNow(true)}
+                >
+                  <Eye size={14} /> Publish Now
+                </button>
+              </div>
+              <span className="form-hint">
+                {publishNow
+                  ? 'Page will be immediately visible to all users.'
+                  : 'Page will be saved as draft. You can publish it later.'}
+              </span>
+            </div>
+          )}
+          {!isAdmin && (
+            <div className="form-group">
+              <span className="form-hint" style={{ color: 'var(--c-text-muted)' }}>
+                <EyeOff size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                Page will be created as a draft. Request admin approval to publish.
+              </span>
+            </div>
+          )}
 
           <div className="form-group">
             <label>Tags</label>

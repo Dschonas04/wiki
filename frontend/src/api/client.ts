@@ -236,7 +236,7 @@ export const api = {
   getRecentPages: (limit = 10) => request<WikiPage[]>('GET', `/pages/recent?limit=${limit}`),
   searchPages: (q: string) => request<WikiPage[]>('GET', `/pages/search?q=${encodeURIComponent(q)}`),
   getPage: (id: number | string) => request<WikiPage>('GET', `/pages/${id}`),
-  createPage: (data: { title: string; content: string; parentId?: number | null; contentType?: string }) =>
+  createPage: (data: { title: string; content: string; parentId?: number | null; contentType?: string; visibility?: 'draft' | 'published' }) =>
     request<WikiPage>('POST', '/pages', data),
   updatePage: (id: number | string, data: { title: string; content: string; parentId?: number | null; contentType?: string }) =>
     request<WikiPage>('PUT', `/pages/${id}`, data),

@@ -28,7 +28,7 @@ export default function KnowledgeGraph() {
 
   // Camera state
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 });
-  const dragRef = useRef<{ active: boolean; lastX: number; lastY: number; node: SimNode | null }>({ active: false, lastX: 0, lastY: 0, node: null });
+  const dragRef = useRef<{ active: boolean; dragging: boolean; startX: number; startY: number; lastX: number; lastY: number; node: SimNode | null }>({ active: false, dragging: false, startX: 0, startY: 0, lastX: 0, lastY: 0, node: null });
   const nodesRef = useRef<SimNode[]>([]);
   const edgesRef = useRef<GraphEdge[]>([]);
   const animRef = useRef<number>(0);
@@ -252,7 +252,7 @@ export default function KnowledgeGraph() {
     const sy = e.clientY - rect.top;
     const { x, y } = screenToWorld(sx, sy);
     const node = findNodeAt(x, y);
-    dragRef.current = { active: true, lastX: sx, lastY: sy, node };
+    dragRef.current = { active: true, dragging: false, startX: sx, startY: sy, lastX: sx, lastY: sy, node };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -262,6 +262,15 @@ export default function KnowledgeGraph() {
     const { x, y } = screenToWorld(sx, sy);
 
     if (dragRef.current.active) {
+      // Check if user has moved far enough to start a real drag
+      const DRAG_THRESHOLD = 6;
+      if (!dragRef.current.dragging) {
+        const distX = Math.abs(sx - dragRef.current.startX);
+        const distY = Math.abs(sy - dragRef.current.startY);
+        if (distX < DRAG_THRESHOLD && distY < DRAG_THRESHOLD) return; // not dragging yet
+        dragRef.current.dragging = true;
+      }
+
       if (dragRef.current.node) {
         // Drag node
         dragRef.current.node.x = x;
@@ -285,20 +294,16 @@ export default function KnowledgeGraph() {
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
-    if (dragRef.current.node && !dragRef.current.active) { /* no-op */ }
-    // Check if it was a click (not drag)
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    const movedX = Math.abs(sx - dragRef.current.lastX);
-    const movedY = Math.abs(sy - dragRef.current.lastY);
-    if (dragRef.current.node && movedX < 4 && movedY < 4) {
+    // If we never started a real drag, treat it as a click
+    if (dragRef.current.active && !dragRef.current.dragging && dragRef.current.node) {
       const n = dragRef.current.node;
       if (n.type === 'page') {
         navigate(`/pages/${n.id.replace('page-', '')}`);
+      } else if (n.type === 'tag') {
+        navigate(`/pages?tag=${encodeURIComponent(n.label)}`);
       }
     }
-    dragRef.current = { active: false, lastX: 0, lastY: 0, node: null };
+    dragRef.current = { active: false, dragging: false, startX: 0, startY: 0, lastX: 0, lastY: 0, node: null };
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -365,7 +370,7 @@ export default function KnowledgeGraph() {
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onMouseLeave={() => { dragRef.current.active = false; setHoveredNode(null); }}
+            onMouseLeave={() => { dragRef.current = { active: false, dragging: false, startX: 0, startY: 0, lastX: 0, lastY: 0, node: null }; setHoveredNode(null); }}
             onWheel={handleWheel}
           />
           {/* Legend */}
@@ -383,7 +388,7 @@ export default function KnowledgeGraph() {
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#6366f1', display: 'inline-block' }} /> Tag
             </span>
-            <span style={{ opacity: 0.6 }}>Click a page to open · Scroll to zoom · Drag to pan</span>
+            <span style={{ opacity: 0.6 }}>Click to open · Scroll to zoom · Drag to pan</span>
           </div>
           {hoveredNode && (
             <div style={{
