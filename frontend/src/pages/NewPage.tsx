@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Save, X, Code, FileText, Tag, Upload, Trash2, Paperclip } from 'lucide-react';
+import { Save, X, Code, FileText, Tag, Upload, Trash2, Paperclip, Sparkles, FolderOpen } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { api, type WikiPage, type Tag as TagType } from '../api/client';
+import { api, type WikiPage, type Tag as TagType, type PageTemplate, type Folder } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import EditorToolbar from '../components/EditorToolbar';
+import BlockEditor from '../components/BlockEditor';
+import TemplateSelector from '../components/TemplateSelector';
 
 export default function NewPage() {
   const navigate = useNavigate();
@@ -18,11 +20,14 @@ export default function NewPage() {
   const isAdmin = user?.globalRole === 'admin';
   const [searchParams] = useSearchParams();
   const urlSpaceId = searchParams.get('spaceId');
+  const urlFolderId = searchParams.get('folderId');
   const isPrivate = searchParams.get('private') === '1';
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [contentType, setContentType] = useState<'markdown' | 'html'>('markdown');
   const [parentId, setParentId] = useState<number | null>(null);
+  const [folderId, setFolderId] = useState<number | null>(urlFolderId ? parseInt(urlFolderId) : null);
+  const [spaceFolders, setSpaceFolders] = useState<Folder[]>([]);
   const [allPages, setAllPages] = useState<WikiPage[]>([]);
   const [allTags, setAllTags] = useState<TagType[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
@@ -34,11 +39,27 @@ export default function NewPage() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showTemplates, setShowTemplates] = useState(true);
+  const [editorMode, setEditorMode] = useState<'wysiwyg' | 'raw'>('wysiwyg');
 
   useEffect(() => {
     api.getPages().then(setAllPages).catch(() => {});
     api.getTags().then(setAllTags).catch(() => {});
-  }, []);
+    if (urlSpaceId) {
+      api.getFolders(parseInt(urlSpaceId)).then(folders => {
+        // Flatten hierarchical folders for the dropdown
+        const flat: Folder[] = [];
+        const flatten = (items: Folder[], depth = 0) => {
+          items.forEach(f => {
+            flat.push({ ...f, depth });
+            if (f.children) flatten(f.children, depth + 1);
+          });
+        };
+        flatten(folders);
+        setSpaceFolders(flat);
+      }).catch(() => {});
+    }
+  }, [urlSpaceId]);
 
   // Unsaved changes warning
   useEffect(() => {
@@ -80,6 +101,18 @@ export default function NewPage() {
     ? DOMPurify.sanitize(marked.parse(content || '') as string)
     : DOMPurify.sanitize(content || '', { ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'style'], ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'target', 'controls', 'autoplay'] });
 
+  const handleTemplateSelect = (tpl: PageTemplate | null) => {
+    if (tpl && tpl.content) {
+      setContent(tpl.content);
+      setContentType((tpl.content_type as 'markdown' | 'html') || 'html');
+      if (tpl.content_type === 'html' || !tpl.content_type) setEditorMode('wysiwyg');
+    } else {
+      setContentType('html');
+      setEditorMode('wysiwyg');
+    }
+    setShowTemplates(false);
+  };
+
   const addFiles = (files: FileList | File[]) => {
     setPendingFiles(prev => [...prev, ...Array.from(files)]);
     setIsDirty(true);
@@ -101,14 +134,25 @@ export default function NewPage() {
 
     setSaving(true);
     try {
-      const page = await api.createPage({
-        title: title.trim(),
-        content: content.trim(),
-        parentId,
-        contentType,
-        ...(urlSpaceId ? { spaceId: parseInt(urlSpaceId) } : {}),
-        ...(isPrivate ? { privateSpaceId: user?.id } : {}),
-      });
+      let page;
+      if (isPrivate) {
+        // Private Seiten ueber die Private-Space-API erstellen
+        page = await api.createPrivatePage({
+          title: title.trim(),
+          content: content.trim(),
+          contentType,
+          parentId,
+        });
+      } else {
+        page = await api.createPage({
+          title: title.trim(),
+          content: content.trim(),
+          parentId,
+          contentType,
+          ...(urlSpaceId ? { spaceId: parseInt(urlSpaceId) } : {}),
+          ...(folderId ? { folderId } : {}),
+        });
+      }
       if (selectedTagIds.length > 0) {
         await api.setPageTags(page.id, selectedTagIds).catch(() => {});
       }
@@ -127,7 +171,11 @@ export default function NewPage() {
         showToast(t('newpage.created_toast'), 'success');
       }
       setIsDirty(false);
-      navigate(`/pages/${page.id}`);
+      if (isPrivate) {
+        navigate('/private');
+      } else {
+        navigate(`/pages/${page.id}`);
+      }
     } catch (err: any) {
       showToast(err.message, 'error');
       setSaving(false);
@@ -136,6 +184,9 @@ export default function NewPage() {
 
   return (
     <>
+      {showTemplates && (
+        <TemplateSelector onSelect={handleTemplateSelect} onClose={() => setShowTemplates(false)} />
+      )}
       <PageHeader title={t('newpage.title')} subtitle={t('newpage.subtitle')} />
 
       <div className="content-body">
@@ -169,20 +220,43 @@ export default function NewPage() {
               </select>
             </div>
 
+            {urlSpaceId && spaceFolders.length > 0 && (
+              <div className="form-group" style={{ flex: 1 }}>
+                <label htmlFor="folderId"><FolderOpen size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />{t('newpage.label_folder') || 'Ordner'}</label>
+                <select
+                  id="folderId"
+                  value={folderId ?? ''}
+                  onChange={(e) => setFolderId(e.target.value ? parseInt(e.target.value) : null)}
+                >
+                  <option value="">{t('newpage.folder_none') || 'Kein Ordner (Root)'}</option>
+                  {spaceFolders.map((f) => (
+                    <option key={f.id} value={f.id}>{'\u00A0\u00A0'.repeat(f.depth)}{f.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="form-group" style={{ flex: 0 }}>
               <label>{t('newpage.label_type')}</label>
               <div className="content-type-toggle">
                 <button
                   type="button"
-                  className={`toggle-btn ${contentType === 'markdown' ? 'active' : ''}`}
-                  onClick={() => setContentType('markdown')}
+                  className={`toggle-btn ${editorMode === 'wysiwyg' ? 'active' : ''}`}
+                  onClick={() => { setEditorMode('wysiwyg'); setContentType('html'); }}
+                >
+                  <FileText size={14} /> WYSIWYG
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${editorMode === 'raw' && contentType === 'markdown' ? 'active' : ''}`}
+                  onClick={() => { setEditorMode('raw'); setContentType('markdown'); }}
                 >
                   <FileText size={14} /> Markdown
                 </button>
                 <button
                   type="button"
-                  className={`toggle-btn ${contentType === 'html' ? 'active' : ''}`}
-                  onClick={() => setContentType('html')}
+                  className={`toggle-btn ${editorMode === 'raw' && contentType === 'html' ? 'active' : ''}`}
+                  onClick={() => { setEditorMode('raw'); setContentType('html'); }}
                 >
                   <Code size={14} /> HTML
                 </button>
@@ -286,27 +360,38 @@ export default function NewPage() {
             </div>
           </div>
 
-          <div className="editor-grid">
+          {editorMode === 'wysiwyg' ? (
             <div className="form-group">
-              <label htmlFor="content">{t('newpage.label_content', { type: contentType === 'markdown' ? 'Markdown' : 'HTML' })}</label>
-              <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
-              <textarea
-                ref={contentRef}
-                id="content"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder={contentType === 'markdown' ? t('newpage.md_placeholder') : t('newpage.html_placeholder')}
-                required
-                maxLength={100000}
-                rows={14}
+              <label>{t('newpage.label_content', { type: 'WYSIWYG' })}</label>
+              <BlockEditor
+                content={content}
+                onChange={(html) => { setContent(html); }}
+                placeholder={t('newpage.md_placeholder')}
               />
             </div>
+          ) : (
+            <div className="editor-grid">
+              <div className="form-group">
+                <label htmlFor="content">{t('newpage.label_content', { type: contentType === 'markdown' ? 'Markdown' : 'HTML' })}</label>
+                <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
+                <textarea
+                  ref={contentRef}
+                  id="content"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder={contentType === 'markdown' ? t('newpage.md_placeholder') : t('newpage.html_placeholder')}
+                  required
+                  maxLength={100000}
+                  rows={14}
+                />
+              </div>
 
-            <div className="form-group">
-              <label>{t('newpage.label_preview')}</label>
-              <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              <div className="form-group">
+                <label>{t('newpage.label_preview')}</label>
+                <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>

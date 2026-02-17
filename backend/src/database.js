@@ -139,7 +139,7 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
         CREATE TABLE IF NOT EXISTS folders (
           id SERIAL PRIMARY KEY,
           space_id INTEGER NOT NULL REFERENCES team_spaces(id) ON DELETE CASCADE,
-          parent_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+          parent_folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
           name VARCHAR(255) NOT NULL,
           slug VARCHAR(100) NOT NULL,
           depth INTEGER NOT NULL DEFAULT 0,
@@ -148,7 +148,7 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           CONSTRAINT max_folder_depth CHECK (depth <= 2),
-          UNIQUE(space_id, parent_id, slug)
+          UNIQUE(space_id, parent_folder_id, slug)
         )
       `);
 
@@ -217,13 +217,14 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
           id SERIAL PRIMARY KEY,
           page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
           requested_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          reviewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
           target_space_id INTEGER NOT NULL REFERENCES team_spaces(id) ON DELETE CASCADE,
           target_folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
           status VARCHAR(30) NOT NULL DEFAULT 'pending',
           comment TEXT,
+          review_comment TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          resolved_at TIMESTAMP,
+          reviewed_at TIMESTAMP,
           CONSTRAINT valid_publish_status CHECK (
             status IN ('pending', 'approved', 'rejected', 'changes_requested', 'cancelled')
           )
@@ -304,6 +305,56 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       `);
 
       // ===========================================================
+      // ===== 16. Seitenkommentare =====
+      // ===========================================================
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS page_comments (
+          id SERIAL PRIMARY KEY,
+          page_id INTEGER NOT NULL REFERENCES wiki_pages(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          content TEXT NOT NULL,
+          parent_id INTEGER REFERENCES page_comments(id) ON DELETE CASCADE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // ===========================================================
+      // ===== 17. Benachrichtigungen =====
+      // ===========================================================
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id SERIAL PRIMARY KEY,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          type VARCHAR(50) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          message TEXT,
+          link VARCHAR(500),
+          is_read BOOLEAN NOT NULL DEFAULT false,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // ===========================================================
+      // ===== 18. Seitenvorlagen =====
+      // ===========================================================
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS page_templates (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(255) NOT NULL,
+          description TEXT DEFAULT '',
+          content TEXT NOT NULL DEFAULT '',
+          content_type VARCHAR(20) NOT NULL DEFAULT 'html',
+          icon VARCHAR(50) DEFAULT '📄',
+          category VARCHAR(100) DEFAULT 'general',
+          is_default BOOLEAN NOT NULL DEFAULT false,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // ===========================================================
       // ===== Migrationen für bestehende Datenbanken =====
       // ===========================================================
       await client.query(`
@@ -320,6 +371,11 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
           END IF;
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='must_change_password') THEN
             ALTER TABLE users ADD COLUMN must_change_password BOOLEAN NOT NULL DEFAULT false;
+          END IF;
+          -- folders: parent_id → parent_folder_id Migration
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='folders' AND column_name='parent_id')
+          AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='folders' AND column_name='parent_folder_id') THEN
+            ALTER TABLE folders RENAME COLUMN parent_id TO parent_folder_id;
           END IF;
         END; $$
       `);
@@ -380,7 +436,9 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_memberships_space ON space_memberships(space_id)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_memberships_user ON space_memberships(user_id)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_folders_space ON folders(space_id)');
-      await client.query('CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_folders_parent_folder ON folders(parent_folder_id)');
+      // Drop old index if it exists from before migration
+      await client.query('DROP INDEX IF EXISTS idx_folders_parent');
       await client.query('CREATE INDEX IF NOT EXISTS idx_page_tags_page ON wiki_page_tags(page_id)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_page_tags_tag ON wiki_page_tags(tag_id)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_tags_created_by ON wiki_tags(created_by)');
@@ -393,6 +451,12 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_audit_space ON audit_log(space_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_comments_page ON page_comments(page_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_comments_user ON page_comments(user_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_comments_parent ON page_comments(parent_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, is_read)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_templates_category ON page_templates(category)');
       await client.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name_global
         ON wiki_tags(name) WHERE created_by IS NULL
@@ -447,6 +511,55 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
           `INSERT INTO wiki_tags (name, color, created_by) VALUES ($1, $2, NULL) ON CONFLICT DO NOTHING`,
           [tag.name, tag.color]
         );
+      }
+
+      // ===== Standard-Vorlagen =====
+      const templateCount = await client.query('SELECT COUNT(*) FROM page_templates');
+      if (parseInt(templateCount.rows[0].count) === 0) {
+        const defaultTemplates = [
+          {
+            name: 'Meeting-Protokoll',
+            description: 'Vorlage für Besprechungs-Protokolle',
+            icon: '📋',
+            category: 'meetings',
+            content: '<h1>Meeting-Protokoll</h1><p><strong>Datum:</strong> </p><p><strong>Teilnehmer:</strong> </p><p><strong>Moderator:</strong> </p><hr><h2>Agenda</h2><ol><li>Punkt 1</li><li>Punkt 2</li><li>Punkt 3</li></ol><h2>Beschlüsse</h2><ul><li></li></ul><h2>Offene Punkte / Aktionen</h2><table><thead><tr><th>Aktion</th><th>Verantwortlich</th><th>Deadline</th></tr></thead><tbody><tr><td></td><td></td><td></td></tr></tbody></table><h2>Nächster Termin</h2><p></p>'
+          },
+          {
+            name: 'Technische Dokumentation',
+            description: 'Vorlage für technische Anleitungen',
+            icon: '⚙️',
+            category: 'documentation',
+            content: '<h1>Technische Dokumentation</h1><blockquote><p>Kurze Beschreibung des Systems/Features</p></blockquote><h2>Überblick</h2><p>Beschreibung des Systems und seines Zwecks.</p><h2>Voraussetzungen</h2><ul><li>Voraussetzung 1</li><li>Voraussetzung 2</li></ul><h2>Installation / Setup</h2><pre><code># Installationsschritte hier</code></pre><h2>Konfiguration</h2><p>Beschreibung der Konfigurationsoptionen.</p><h2>Verwendung</h2><p>Anleitung zur Verwendung.</p><h2>Fehlerbehebung</h2><p>Häufige Probleme und Lösungen.</p>'
+          },
+          {
+            name: 'How-To Guide',
+            description: 'Schritt-für-Schritt Anleitung',
+            icon: '📖',
+            category: 'guides',
+            content: '<h1>How-To: [Titel]</h1><blockquote><p>Was lernt der Leser in diesem Guide?</p></blockquote><h2>Ziel</h2><p>Nach dieser Anleitung können Sie…</p><h2>Voraussetzungen</h2><ul><li></li></ul><h2>Schritt 1: [Titel]</h2><p>Beschreibung…</p><h2>Schritt 2: [Titel]</h2><p>Beschreibung…</p><h2>Schritt 3: [Titel]</h2><p>Beschreibung…</p><h2>Zusammenfassung</h2><p>Sie haben gelernt, wie…</p><h2>Weiterführende Links</h2><ul><li></li></ul>'
+          },
+          {
+            name: 'RFC / Entscheidung',
+            description: 'Request for Comments – Entscheidungsvorlage',
+            icon: '💡',
+            category: 'decisions',
+            content: '<h1>RFC: [Titel]</h1><p><strong>Status:</strong> Entwurf</p><p><strong>Autor:</strong> </p><p><strong>Datum:</strong> </p><hr><h2>Zusammenfassung</h2><p>Kurze Beschreibung des Vorschlags.</p><h2>Motivation</h2><p>Warum ist diese Änderung notwendig?</p><h2>Vorgeschlagene Lösung</h2><p>Detaillierte Beschreibung der vorgeschlagenen Lösung.</p><h2>Alternativen</h2><p>Welche Alternativen wurden in Betracht gezogen?</p><h2>Auswirkungen</h2><ul><li><strong>Vorteile:</strong> </li><li><strong>Nachteile:</strong> </li><li><strong>Risiken:</strong> </li></ul><h2>Offene Fragen</h2><ul><li></li></ul>'
+          },
+          {
+            name: 'Leere Seite',
+            description: 'Beginne mit einer leeren Seite',
+            icon: '📄',
+            category: 'general',
+            content: ''
+          }
+        ];
+        for (const tpl of defaultTemplates) {
+          await client.query(
+            `INSERT INTO page_templates (name, description, content, content_type, icon, category, is_default) VALUES ($1, $2, $3, 'html', $4, $5, true)`,
+            [tpl.name, tpl.description, tpl.content, tpl.icon, tpl.category]
+          );
+        }
+        console.log('Standard-Vorlagen erstellt.');
       }
 
       console.log('Nexora Datenbankschema initialisiert');

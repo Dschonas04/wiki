@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Paperclip, Upload, X, List } from 'lucide-react';
+import { Edit3, Trash2, ArrowLeft, Calendar, RefreshCw, User, History, Download, Star, Tag, FileText, Paperclip, Upload, X, List, ChevronRight, Layers, FolderOpen, GitBranch } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType, type Attachment } from '../api/client';
@@ -10,6 +10,7 @@ import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import ConfirmDialog from '../components/ConfirmDialog';
+import CommentSection from '../components/CommentSection';
 
 export default function PageView() {
   const { id } = useParams<{ id: string }>();
@@ -300,6 +301,42 @@ export default function PageView() {
       />
 
       <div className="content-body">
+        {/* Breadcrumb Navigation */}
+        {((page as any).breadcrumbs?.length > 0 || (page as any).space_name || (page as any).parent_title) && (
+          <nav className="page-breadcrumb-nav">
+            {(page as any).space_name && (
+              <>
+                <Link to={`/spaces/${page.space_id}`} className="breadcrumb-item breadcrumb-space">
+                  <Layers size={14} />
+                  <span>{(page as any).space_name}</span>
+                </Link>
+                <ChevronRight size={12} className="breadcrumb-sep" />
+              </>
+            )}
+            {(page as any).folder_name && (
+              <>
+                <span className="breadcrumb-item breadcrumb-folder">
+                  <FolderOpen size={14} />
+                  <span>{(page as any).folder_name}</span>
+                </span>
+                <ChevronRight size={12} className="breadcrumb-sep" />
+              </>
+            )}
+            {(page as any).breadcrumbs?.map((crumb: { id: number; title: string }) => (
+              <span key={crumb.id} style={{ display: 'contents' }}>
+                <Link to={`/pages/${crumb.id}`} className="breadcrumb-item breadcrumb-page">
+                  <FileText size={13} />
+                  <span>{crumb.title}</span>
+                </Link>
+                <ChevronRight size={12} className="breadcrumb-sep" />
+              </span>
+            ))}
+            <span className="breadcrumb-item breadcrumb-current">
+              {page.title}
+            </span>
+          </nav>
+        )}
+
         {/* Workflow-Status-Anzeige */}
         {(page as any).workflow_status && (page as any).workflow_status !== 'published' && (
           <div className="draft-banner">
@@ -383,6 +420,25 @@ export default function PageView() {
             </div>
           </div>
         </div>
+
+        {/* Unterseiten */}
+        {(page as any).children?.length > 0 && (
+          <div className="child-pages-section">
+            <h3 className="child-pages-title">
+              <GitBranch size={18} />
+              {t('pageview.child_pages')} <span className="child-pages-count">{(page as any).children.length}</span>
+            </h3>
+            <div className="child-pages-grid">
+              {(page as any).children.map((child: { id: number; title: string }) => (
+                <Link key={child.id} to={`/pages/${child.id}`} className="child-page-card">
+                  <FileText size={16} className="child-page-icon" />
+                  <span className="child-page-title">{child.title}</span>
+                  <ChevronRight size={14} className="child-page-arrow" />
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Attachments */}
         <div className="attachments-section">
@@ -479,6 +535,9 @@ export default function PageView() {
             <span>{t('pageview.back')}</span>
           </Link>
         </div>
+
+        {/* Kommentarbereich */}
+        {page && <CommentSection pageId={page.id} />}
       </div>
 
       {confirmDelete && page && (

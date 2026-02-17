@@ -43,6 +43,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { api, type WikiPage } from '../api/client';
+import NotificationBell from './NotificationBell';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -182,6 +183,7 @@ export default function Layout() {
                 <Shield size={11} /> {t(`role.${user.globalRole}`) || user.globalRole}
               </span>
             </div>
+            <NotificationBell />
           </div>
         )}
 

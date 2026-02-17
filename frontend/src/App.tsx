@@ -15,6 +15,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ToastProvider } from './context/ToastContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
+import { ThemeProvider } from './context/ThemeContext';
 import Layout from './components/Layout';
 import Loading from './components/Loading';
 import CookieBanner from './components/CookieBanner';
@@ -42,6 +43,8 @@ const Spaces = lazy(() => import('./pages/Spaces'));
 const SpaceView = lazy(() => import('./pages/SpaceView'));
 const PrivateSpacePage = lazy(() => import('./pages/PrivateSpace'));
 const Publishing = lazy(() => import('./pages/Publishing'));
+// AdminDashboard is now embedded in Health.tsx
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 
 /**
  * RequireAuth – Wrapper zum Schutz von Routen
@@ -120,6 +123,7 @@ function AppRoutes() {
         <Route path="/graph" element={<RequireAuth permission="pages.read"><S><KnowledgeGraph /></S></RequireAuth>} />
 
         {/* Administration */}
+        <Route path="/notifications" element={<S><NotificationsPage /></S>} />
         <Route path="/users" element={<RequireAuth permission="users.read"><S><UsersPage /></S></RequireAuth>} />
         <Route path="/audit" element={<RequireAuth permission="audit.read"><S><AuditLog /></S></RequireAuth>} />
         <Route path="/health" element={<RequireAuth permission="health.read"><S><Health /></S></RequireAuth>} />
@@ -140,13 +144,15 @@ function AppRoutes() {
  */
 export default function App() {
   return (
-    <ToastProvider>
-      <LanguageProvider>
-        <AuthProvider>
-          <AppRoutes />
-          <CookieBanner />
-        </AuthProvider>
-      </LanguageProvider>
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <AppRoutes />
+            <CookieBanner />
+          </AuthProvider>
+        </LanguageProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

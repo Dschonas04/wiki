@@ -96,6 +96,18 @@ app.use('/api', require('./src/routes/publishing'));
 // Privater Bereich: Persoenlicher Arbeitsbereich je Benutzer
 app.use('/api', require('./src/routes/private-space'));
 
+// Kommentare: Seitenkommentare mit Thread-Unterstuetzung
+app.use('/api', require('./src/routes/comments'));
+
+// Benachrichtigungen: In-App-Benachrichtigungen
+app.use('/api', require('./src/routes/notifications'));
+
+// Vorlagen: Seitenvorlagen fuer schnelle Seitenerstellung
+app.use('/api', require('./src/routes/templates'));
+
+// Admin-Dashboard: Analytics und Statistiken
+app.use('/api', require('./src/routes/dashboard'));
+
 // ============================================================
 // 404-Handler fuer nicht gefundene API-Endpunkte
 // Faengt alle Anfragen ab, die keiner Route zugeordnet werden konnten.

@@ -74,6 +74,7 @@ async function authenticate(req, res, next) {
     next();
   } catch (err) {
     // Token ist abgelaufen oder ungültig → Cookie entfernen und Fehler zurückgeben
+    console.error('Auth middleware error:', err.message);
     res.clearCookie(COOKIE_NAME);
     return res.status(401).json({ error: 'Session expired. Please log in again.' });
   }

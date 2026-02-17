@@ -330,14 +330,45 @@ router.get('/pages/:id', authenticate, requirePermission('pages.read'), async (r
   try {
     // Seite mit Ersteller- und Aktualisierungsinformationen laden
     const result = await pool.query(`
-      SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name
+      SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
+             pp.title AS parent_title,
+             ts.name AS space_name,
+             f.name AS folder_name
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
+      LEFT JOIN wiki_pages pp ON p.parent_id = pp.id
+      LEFT JOIN team_spaces ts ON p.space_id = ts.id
+      LEFT JOIN folders f ON p.folder_id = f.id
       WHERE p.id = $1 AND p.deleted_at IS NULL`, [id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
 
     const page = result.rows[0];
+
+    // Breadcrumb-Kette aufbauen (Eltern-Pfad)
+    const breadcrumbs = [];
+    if (page.parent_id) {
+      let currentParentId = page.parent_id;
+      let depth = 0;
+      while (currentParentId && depth < 10) {
+        const parentResult = await pool.query(
+          'SELECT id, title, parent_id FROM wiki_pages WHERE id = $1 AND deleted_at IS NULL',
+          [currentParentId]
+        );
+        if (parentResult.rows.length === 0) break;
+        breadcrumbs.unshift({ id: parentResult.rows[0].id, title: parentResult.rows[0].title });
+        currentParentId = parentResult.rows[0].parent_id;
+        depth++;
+      }
+    }
+    page.breadcrumbs = breadcrumbs;
+
+    // Unterseiten laden
+    const children = await pool.query(
+      `SELECT id, title FROM wiki_pages WHERE parent_id = $1 AND deleted_at IS NULL ORDER BY title`,
+      [id]
+    );
+    page.children = children.rows;
 
     // Zugriffsprüfung für Nicht-Admins/Auditoren
     if (req.user.global_role !== 'admin' && req.user.global_role !== 'auditor') {

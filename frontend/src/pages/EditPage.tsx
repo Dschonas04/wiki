@@ -9,6 +9,7 @@ import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import EditorToolbar from '../components/EditorToolbar';
+import BlockEditor from '../components/BlockEditor';
 
 export default function EditPage() {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +33,7 @@ export default function EditPage() {
   const [initialTitle, setInitialTitle] = useState('');
   const [initialContent, setInitialContent] = useState('');
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const [editorMode, setEditorMode] = useState<'wysiwyg' | 'raw'>('wysiwyg');
 
   const previewHtml = contentType === 'markdown'
     ? DOMPurify.sanitize(marked.parse(content || '') as string)
@@ -45,8 +47,11 @@ export default function EditPage() {
         setContent(page.content);
         setInitialTitle(page.title);
         setInitialContent(page.content);
-        setContentType(page.content_type || 'markdown');
+        const ct = page.content_type || 'markdown';
+        setContentType(ct);
         setParentId(page.parent_id ?? null);
+        // Default to WYSIWYG for html, raw for markdown
+        setEditorMode(ct === 'html' ? 'wysiwyg' : 'raw');
       }),
       api.getPages().then(setAllPages),
       api.getTags().then(setAllTags),
@@ -181,15 +186,22 @@ export default function EditPage() {
               <div className="content-type-toggle">
                 <button
                   type="button"
-                  className={`toggle-btn ${contentType === 'markdown' ? 'active' : ''}`}
-                  onClick={() => setContentType('markdown')}
+                  className={`toggle-btn ${editorMode === 'wysiwyg' ? 'active' : ''}`}
+                  onClick={() => { setEditorMode('wysiwyg'); setContentType('html'); }}
+                >
+                  <FileText size={14} /> WYSIWYG
+                </button>
+                <button
+                  type="button"
+                  className={`toggle-btn ${editorMode === 'raw' && contentType === 'markdown' ? 'active' : ''}`}
+                  onClick={() => { setEditorMode('raw'); setContentType('markdown'); }}
                 >
                   <FileText size={14} /> Markdown
                 </button>
                 <button
                   type="button"
-                  className={`toggle-btn ${contentType === 'html' ? 'active' : ''}`}
-                  onClick={() => setContentType('html')}
+                  className={`toggle-btn ${editorMode === 'raw' && contentType === 'html' ? 'active' : ''}`}
+                  onClick={() => { setEditorMode('raw'); setContentType('html'); }}
                 >
                   <Code size={14} /> HTML
                 </button>
@@ -255,26 +267,36 @@ export default function EditPage() {
             )}
           </div>
 
-          <div className="editor-grid">
+          {editorMode === 'wysiwyg' ? (
             <div className="form-group">
-              <label htmlFor="content">{t('editpage.label_content', { type: contentType === 'markdown' ? 'Markdown' : 'HTML' })}</label>
-              <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
-              <textarea
-                ref={contentRef}
-                id="content"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                required
-                maxLength={100000}
-                rows={16}
+              <label>{t('editpage.label_content', { type: 'WYSIWYG' })}</label>
+              <BlockEditor
+                content={content}
+                onChange={(html) => { setContent(html); }}
               />
             </div>
+          ) : (
+            <div className="editor-grid">
+              <div className="form-group">
+                <label htmlFor="content">{t('editpage.label_content', { type: contentType === 'markdown' ? 'Markdown' : 'HTML' })}</label>
+                <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
+                <textarea
+                  ref={contentRef}
+                  id="content"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  required
+                  maxLength={100000}
+                  rows={16}
+                />
+              </div>
 
-            <div className="form-group">
-              <label>{t('editpage.label_preview')}</label>
-              <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              <div className="form-group">
+                <label>{t('editpage.label_preview')}</label>
+                <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>

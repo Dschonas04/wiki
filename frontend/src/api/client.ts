@@ -110,10 +110,17 @@ export interface WikiPage {
   content: string;
   content_type?: 'markdown' | 'html';
   parent_id?: number | null;
+  parent_title?: string | null;
   children_count?: number;
+  /** Breadcrumb-Kette (Elternseiten) */
+  breadcrumbs?: { id: number; title: string }[];
+  /** Unterseiten */
+  children?: { id: number; title: string }[];
   /** Bereichs-Zuordnung */
   space_id?: number | null;
+  space_name?: string | null;
   folder_id?: number | null;
+  folder_name?: string | null;
   private_space_id?: number | null;
   /** Workflow-Status */
   workflow_status?: WorkflowStatus;
@@ -332,6 +339,50 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
+/**
+ * Comment – Seitenkommentar
+ */
+export interface Comment {
+  id: number;
+  page_id: number;
+  user_id: number;
+  content: string;
+  parent_id: number | null;
+  username: string;
+  display_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Notification – Benachrichtigung
+ */
+export interface Notification {
+  id: number;
+  user_id: number;
+  type: string;
+  title: string;
+  message: string | null;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+/**
+ * PageTemplate – Seitenvorlage
+ */
+export interface PageTemplate {
+  id: number;
+  name: string;
+  description: string;
+  content: string;
+  content_type: string;
+  icon: string;
+  category: string;
+  is_default: boolean;
+  created_at: string;
+}
+
 // ===== API-Basispfad =====
 const API_BASE = '/api';
 
@@ -416,9 +467,10 @@ export const api = {
 
   // ===== Privater Bereich =====
   getPrivateSpace: () => request<PrivateSpace>('GET', '/private-space'),
-  createPrivatePage: (data: { title: string; content: string; contentType?: string }) =>
+  getPrivatePage: (id: number) => request<WikiPage>('GET', `/private-space/pages/${id}`),
+  createPrivatePage: (data: { title: string; content: string; contentType?: string; parentId?: number | null }) =>
     request<WikiPage>('POST', '/private-space/pages', data),
-  updatePrivatePage: (id: number, data: { title: string; content: string; contentType?: string }) =>
+  updatePrivatePage: (id: number, data: { title: string; content: string; contentType?: string; parentId?: number | null }) =>
     request<WikiPage>('PUT', `/private-space/pages/${id}`, data),
   deletePrivatePage: (id: number) =>
     request<{ message: string }>('DELETE', `/private-space/pages/${id}`),
@@ -544,4 +596,40 @@ export const api = {
 
   // ===== Wissensgraph =====
   getGraph: () => request<GraphData>('GET', '/graph'),
+
+  // ===== Kommentare =====
+  getComments: (pageId: number | string) =>
+    request<Comment[]>('GET', `/pages/${pageId}/comments`),
+  createComment: (pageId: number | string, content: string, parentId?: number) =>
+    request<Comment>('POST', `/pages/${pageId}/comments`, { content, parentId }),
+  updateComment: (id: number, content: string) =>
+    request<Comment>('PUT', `/comments/${id}`, { content }),
+  deleteComment: (id: number) =>
+    request<{ message: string }>('DELETE', `/comments/${id}`),
+
+  // ===== Benachrichtigungen =====
+  getNotifications: (limit = 50) =>
+    request<{ items: Notification[]; total: number }>('GET', `/notifications?limit=${limit}`),
+  getUnreadCount: () =>
+    request<{ count: number }>('GET', '/notifications/unread'),
+  markNotificationRead: (id: number) =>
+    request<{ message: string }>('PUT', `/notifications/${id}/read`),
+  markAllNotificationsRead: () =>
+    request<{ message: string }>('PUT', '/notifications/read-all'),
+  deleteNotification: (id: number) =>
+    request<{ message: string }>('DELETE', `/notifications/${id}`),
+
+  // ===== Vorlagen =====
+  getTemplates: () => request<PageTemplate[]>('GET', '/templates'),
+  getTemplate: (id: number) => request<PageTemplate>('GET', `/templates/${id}`),
+  createTemplate: (data: { name: string; description?: string; content?: string; contentType?: string; icon?: string; category?: string }) =>
+    request<PageTemplate>('POST', '/templates', data),
+  deleteTemplate: (id: number) =>
+    request<{ message: string }>('DELETE', `/templates/${id}`),
+
+  // ===== Admin-Dashboard =====
+  getDashboardStats: () => request<any>('GET', '/dashboard/stats'),
+  getDashboardActivity: () => request<any>('GET', '/dashboard/activity'),
+  getDashboardTopPages: () => request<any[]>('GET', '/dashboard/top-pages'),
+  getDashboardTopUsers: () => request<any[]>('GET', '/dashboard/top-users'),
 };

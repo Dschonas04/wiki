@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import {
   CheckCircle,
   XCircle,
@@ -8,12 +8,22 @@ import {
   Clock,
   Terminal,
   Users,
+  Activity,
+  BarChart3,
 } from 'lucide-react';
 import { api, type HealthData } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 
+const AdminDashboard = lazy(() => import('./AdminDashboard'));
+
 export default function Health() {
+  const { t } = useLanguage();
+  const { user } = useAuth();
+  const isAdmin = user?.globalRole === 'admin';
+  const [tab, setTab] = useState<'health' | 'dashboard'>('health');
   const [data, setData] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,17 +49,17 @@ export default function Health() {
   if (loading) {
     return (
       <>
-        <PageHeader title="System Health" />
+        <PageHeader title="Systemstatus" />
         <div className="content-body"><Loading /></div>
       </>
     );
   }
 
-  if (error) {
+  if (error && tab === 'health') {
     return (
       <>
         <PageHeader
-          title="System Health"
+          title="Systemstatus"
           subtitle="Monitor the status of your wiki"
         />
         <div className="content-body">
@@ -71,10 +81,35 @@ export default function Health() {
   return (
     <>
       <PageHeader
-        title="System Health"
+        title="Systemstatus"
         subtitle="Monitor the status of your wiki"
       />
 
+      {/* Tabs */}
+      {isAdmin && (
+        <div className="health-tabs">
+          <button
+            className={`health-tab ${tab === 'health' ? 'active' : ''}`}
+            onClick={() => setTab('health')}
+          >
+            <Activity size={16} />
+            System Health
+          </button>
+          <button
+            className={`health-tab ${tab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setTab('dashboard')}
+          >
+            <BarChart3 size={16} />
+            {t('dashboard.title')}
+          </button>
+        </div>
+      )}
+
+      {tab === 'dashboard' && isAdmin ? (
+        <Suspense fallback={<div className="content-body"><Loading /></div>}>
+          <AdminDashboard embedded />
+        </Suspense>
+      ) : (
       <div className="content-body">
         {/* Overall Status */}
         <div className={`status-banner ${isHealthy ? 'success' : 'error'}`}>
@@ -161,6 +196,7 @@ export default function Health() {
           </code>
         </div>
       </div>
+      )}
     </>
   );
 }
