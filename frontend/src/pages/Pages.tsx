@@ -4,6 +4,7 @@ import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User, Download, Che
 import { api, type WikiPage, type Tag } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import EmptyState from '../components/EmptyState';
@@ -21,6 +22,7 @@ export default function Pages() {
   const [activeTagId, setActiveTagId] = useState<number | null>(null);
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
+  const { t } = useLanguage();
   const canCreate = hasPermission('pages.create');
   const canEdit = hasPermission('pages.edit');
   const canDelete = hasPermission('pages.delete');
@@ -75,7 +77,7 @@ export default function Pages() {
     try {
       await api.deletePage(id);
       setPages((prev) => prev.filter((p) => p.id !== id));
-      showToast('Seite in Papierkorb verschoben', 'success');
+      showToast(t('pages.deleted_toast'), 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -100,7 +102,7 @@ export default function Pages() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Seiten" />
+        <PageHeader title={t('pages.title')} />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -109,10 +111,10 @@ export default function Pages() {
   if (error) {
     return (
       <>
-        <PageHeader title="Seiten" />
+        <PageHeader title={t('pages.title')} />
         <div className="content-body">
           <div className="card error-card">
-            <p>Seiten konnten nicht geladen werden: {error}</p>
+            <p>{t('pages.load_error')}{error}</p>
           </div>
         </div>
       </>
@@ -122,22 +124,22 @@ export default function Pages() {
   return (
     <>
       <PageHeader
-        title="Seiten"
-        subtitle={`${pages.length} Seiten in Nexora`}
+        title={t('pages.title')}
+        subtitle={t('pages.subtitle', { count: pages.length })}
         actions={
           <div className="btn-row">
             <button className="btn btn-secondary" onClick={() => setShowImport(true)}>
               <Upload size={16} />
-              <span>Importieren</span>
+              <span>{t('pages.import')}</span>
             </button>
             <a href={api.exportAll()} className="btn btn-secondary" download>
               <Download size={16} />
-              <span>Alle exportieren</span>
+              <span>{t('pages.export_all')}</span>
             </a>
             {canCreate && (
               <Link to="/pages/new" className="btn btn-primary">
                 <PlusCircle size={18} />
-                <span>Neue Seite</span>
+                <span>{t('pages.new_page')}</span>
               </Link>
             )}
           </div>
@@ -150,7 +152,7 @@ export default function Pages() {
           <Search size={18} className="search-icon" />
           <input
             type="text"
-            placeholder="Seiten durchsuchen…"
+            placeholder={t('pages.search_placeholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -184,20 +186,20 @@ export default function Pages() {
         {filtered.length === 0 && !search ? (
           <EmptyState
             icon={<FileText size={48} />}
-            title="Noch keine Seiten"
-            description="Erstelle deine erste Seite!"
+            title={t('pages.empty_title')}
+            description={t('pages.empty_desc')}
             action={
               <Link to="/pages/new" className="btn btn-primary">
                 <PlusCircle size={18} />
-                <span>Seite erstellen</span>
+                <span>{t('pages.empty_action')}</span>
               </Link>
             }
           />
         ) : filtered.length === 0 && search ? (
           <EmptyState
             icon={<Search size={48} />}
-            title="Keine Ergebnisse"
-            description={`Keine Seiten für "${search}" gefunden`}
+            title={t('pages.no_results_title')}
+            description={t('pages.no_results_desc', { query: search })}
           />
         ) : (
           <div className="pages-grid">
@@ -217,14 +219,14 @@ export default function Pages() {
                     )}
                     {page.title}
                     {page.content_type === 'html' && <span className="badge badge-html">HTML</span>}
-                    {page.workflow_status && page.workflow_status !== 'published' && <span className="badge badge-draft">{({'draft':'Entwurf','in_review':'In Prüfung','changes_requested':'Änderungen','approved':'Genehmigt','archived':'Archiviert'} as Record<string,string>)[page.workflow_status] || page.workflow_status}</span>}
+                    {page.workflow_status && page.workflow_status !== 'published' && <span className="badge badge-draft">{({'draft':t('workflow.draft'),'in_review':t('workflow.in_review'),'changes_requested':t('pages.badge_changes'),'approved':t('workflow.approved'),'archived':t('workflow.archived')} as Record<string,string>)[page.workflow_status] || page.workflow_status}</span>}
                   </Link>
                   <div className="page-card-actions">
                     {canEdit && (
                       <Link
                         to={`/pages/${page.id}/edit`}
                         className="icon-btn"
-                        title="Bearbeiten"
+                        title={t('common.edit')}
                       >
                         <Edit3 size={15} />
                       </Link>
@@ -232,7 +234,7 @@ export default function Pages() {
                     {canDelete && (
                       <button
                         className="icon-btn danger"
-                        title="Löschen"
+                        title={t('common.delete')}
                         onClick={() => setConfirmDelete({ id: page.id, title: page.title })}
                       >
                         <Trash2 size={15} />
@@ -285,9 +287,9 @@ export default function Pages() {
 
       {confirmDelete && (
         <ConfirmDialog
-          title="Seite löschen?"
-          message={`"${confirmDelete.title}" wird in den Papierkorb verschoben.`}
-          confirmLabel="In Papierkorb verschieben"
+          title={t('pages.delete_title')}
+          message={t('pages.delete_message', { title: confirmDelete.title })}
+          confirmLabel={t('pages.delete_confirm')}
           variant="danger"
           onConfirm={() => handleDelete(confirmDelete.id, confirmDelete.title)}
           onCancel={() => setConfirmDelete(null)}

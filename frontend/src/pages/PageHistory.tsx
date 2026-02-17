@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type PageVersion } from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -13,6 +14,7 @@ export default function PageHistory() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { t, language } = useLanguage();
   const [versions, setVersions] = useState<PageVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -40,7 +42,7 @@ export default function PageHistory() {
     if (!id || confirmRestore === null) return;
     try {
       await api.restorePageVersion(id, confirmRestore);
-      showToast('Version wiederhergestellt', 'success');
+      showToast(t('history.restored_toast'), 'success');
       navigate(`/pages/${id}`);
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -85,7 +87,7 @@ export default function PageHistory() {
   };
 
   const formatDate = (s: string) =>
-    new Date(s).toLocaleDateString('de-DE', {
+    new Date(s).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -96,7 +98,7 @@ export default function PageHistory() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Seitenhistorie" />
+        <PageHeader title={t('history.title')} />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -105,13 +107,13 @@ export default function PageHistory() {
   if (error) {
     return (
       <>
-        <PageHeader title="Seitenhistorie" />
+        <PageHeader title={t('history.title')} />
         <div className="content-body">
           <div className="card error-card">
-            <p>Verlauf konnte nicht geladen werden: {error}</p>
+            <p>{t('history.load_error')}{error}</p>
             <div className="btn-row" style={{ marginTop: 12 }}>
               <Link to={`/pages/${id}`} className="btn btn-secondary">
-                <ArrowLeft size={16} /> Zurück zur Seite
+                <ArrowLeft size={16} /> {t('history.back')}
               </Link>
             </div>
           </div>
@@ -122,12 +124,12 @@ export default function PageHistory() {
 
   return (
     <>
-      <PageHeader title="Seitenhistorie" subtitle={`${versions.length} Version${versions.length !== 1 ? 'en' : ''}`} />
+      <PageHeader title={t('history.title')} subtitle={t('history.subtitle', { count: versions.length })} />
 
       <div className="content-body">
         {versions.length === 0 ? (
           <div className="card">
-            <p>Noch kein Verlauf vorhanden.</p>
+            <p>{t('history.empty')}</p>
           </div>
         ) : (
           <>
@@ -138,8 +140,8 @@ export default function PageHistory() {
               return (
                 <div className="diff-section">
                   <div className="diff-header">
-                    <h3><GitCompare size={16} /> Vergleich v{diff.oldVersion.version_number} → v{diff.newVersion.version_number}</h3>
-                    <button className="btn btn-sm btn-secondary" onClick={() => setDiffVersions(null)}>Schließen</button>
+                    <h3><GitCompare size={16} /> {t('history.compare_title', { from: diff.oldVersion.version_number, to: diff.newVersion.version_number })}</h3>
+                    <button className="btn btn-sm btn-secondary" onClick={() => setDiffVersions(null)}>{t('common.close')}</button>
                   </div>
                   <div className="diff-content">
                     {diff.lines.map((line, i) => (
@@ -169,13 +171,13 @@ export default function PageHistory() {
                       <button
                         className="btn btn-secondary btn-sm"
                         onClick={() => setDiffVersions([versions[i + 1].id, v.id])}
-                        title="Mit vorheriger Version vergleichen"
+                        title={t('history.compare_btn_title')}
                       >
-                        <GitCompare size={14} /> Vergleich
+                        <GitCompare size={14} /> {t('history.compare_btn')}
                       </button>
                     )}
                     <button className="btn btn-secondary btn-sm" onClick={() => setConfirmRestore(v.id)}>
-                      <RotateCcw size={14} /> Wiederherstellen
+                      <RotateCcw size={14} /> {t('common.restore')}
                     </button>
                   </div>
                 </div>
@@ -186,16 +188,16 @@ export default function PageHistory() {
 
         <div className="btn-row" style={{ marginTop: 18 }}>
           <Link to={`/pages/${id}`} className="btn btn-secondary">
-            <ArrowLeft size={16} /> Zurück zur Seite
+            <ArrowLeft size={16} /> {t('history.back')}
           </Link>
         </div>
       </div>
 
       {confirmRestore !== null && (
         <ConfirmDialog
-          title="Version wiederherstellen?"
-          message="Der aktuelle Inhalt wird vor der Wiederherstellung dieser Version im Verlauf gesichert."
-          confirmLabel="Wiederherstellen"
+          title={t('history.restore_dialog_title')}
+          message={t('history.restore_dialog_message')}
+          confirmLabel={t('common.restore')}
           variant="warning"
           onConfirm={handleRestore}
           onCancel={() => setConfirmRestore(null)}

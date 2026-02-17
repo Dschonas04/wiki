@@ -11,6 +11,7 @@ import { Layers, Plus, Users, FileText, ChevronRight } from 'lucide-react';
 import { api, type TeamSpace } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function Spaces() {
   const [spaces, setSpaces] = useState<TeamSpace[]>([]);
@@ -20,6 +21,7 @@ export default function Spaces() {
   const [newDesc, setNewDesc] = useState('');
   const { isAdmin } = useAuth();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -27,7 +29,7 @@ export default function Spaces() {
       const data = await api.getSpaces();
       setSpaces(data);
     } catch (err: any) {
-      showToast(err.message || 'Fehler beim Laden der Bereiche', 'error');
+      showToast(err.message || t('spaces.load_error'), 'error');
     } finally {
       setLoading(false);
     }
@@ -40,13 +42,13 @@ export default function Spaces() {
     if (!newName.trim()) return;
     try {
       const space = await api.createSpace({ name: newName.trim(), description: newDesc.trim() });
-      showToast(`Bereich "${space.name}" erstellt`, 'success');
+      showToast(t('spaces.created_toast', { name: space.name }), 'success');
       setShowCreate(false);
       setNewName('');
       setNewDesc('');
       navigate(`/spaces/${space.id}`);
     } catch (err: any) {
-      showToast(err.message || 'Fehler beim Erstellen', 'error');
+      showToast(err.message || t('spaces.create_error'), 'error');
     }
   };
 
@@ -56,12 +58,12 @@ export default function Spaces() {
     <div className="content-body">
       <div className="page-header">
         <div>
-          <h1><Layers size={28} /> Team-Bereiche</h1>
-          <p className="page-subtitle">Organisiere Wissen in gemeinsamen Arbeitsbereichen</p>
+          <h1><Layers size={28} /> {t('spaces.title')}</h1>
+          <p className="page-subtitle">{t('spaces.subtitle')}</p>
         </div>
         {isAdmin && (
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            <Plus size={16} /> Neuer Bereich
+            <Plus size={16} /> {t('spaces.new_space')}
           </button>
         )}
       </div>
@@ -70,30 +72,30 @@ export default function Spaces() {
       {showCreate && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <form onSubmit={handleCreate}>
-            <h3>Neuen Team-Bereich erstellen</h3>
+            <h3>{t('spaces.create_heading')}</h3>
             <div className="form-group">
-              <label>Name *</label>
+              <label>{t('spaces.label_name')}</label>
               <input
                 type="text"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
-                placeholder="z.B. Entwicklung, Marketing, IT-Dokumentation"
+                placeholder={t('spaces.name_placeholder')}
                 autoFocus
                 required
               />
             </div>
             <div className="form-group">
-              <label>Beschreibung</label>
+              <label>{t('spaces.label_desc')}</label>
               <textarea
                 value={newDesc}
                 onChange={e => setNewDesc(e.target.value)}
-                placeholder="Wofür wird dieser Bereich verwendet?"
+                placeholder={t('spaces.desc_placeholder')}
                 rows={2}
               />
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button type="submit" className="btn btn-primary">Erstellen</button>
-              <button type="button" className="btn btn-secondary" onClick={() => setShowCreate(false)}>Abbrechen</button>
+              <button type="submit" className="btn btn-primary">{t('common.create')}</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowCreate(false)}>{t('common.cancel')}</button>
             </div>
           </form>
         </div>
@@ -103,9 +105,9 @@ export default function Spaces() {
       {spaces.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
           <Layers size={48} style={{ opacity: 0.3, marginBottom: '1rem' }} />
-          <h3>Noch keine Team-Bereiche vorhanden</h3>
+          <h3>{t('spaces.empty_title')}</h3>
           <p style={{ color: 'var(--color-text-secondary)' }}>
-            Erstelle einen Bereich, um Wissen zu organisieren.
+            {t('spaces.empty_desc')}
           </p>
         </div>
       ) : (
@@ -128,16 +130,16 @@ export default function Spaces() {
               </div>
               <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <FileText size={13} /> {space.page_count || 0} Seiten
+                  <FileText size={13} /> {t('spaces.page_count', { count: space.page_count || 0 })}
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Users size={13} /> {space.member_count || 0} Mitglieder
+                  <Users size={13} /> {t('spaces.member_count', { count: space.member_count || 0 })}
                 </span>
               </div>
               {space.my_role && (
                 <div style={{ marginTop: '0.5rem' }}>
                   <span className="badge badge-info" style={{ fontSize: '0.75rem' }}>
-                    {space.my_role === 'owner' ? 'Eigentümer' : space.my_role === 'editor' ? 'Bearbeiter' : space.my_role === 'reviewer' ? 'Prüfer' : 'Betrachter'}
+                    {space.my_role === 'owner' ? t('role.owner') : space.my_role === 'editor' ? t('role.editor') : space.my_role === 'reviewer' ? t('role.reviewer') : t('role.viewer')}
                   </span>
                 </div>
               )}

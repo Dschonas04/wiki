@@ -6,6 +6,7 @@ import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType, type Attachment } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -30,6 +31,7 @@ export default function PageView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
+  const { t, language } = useLanguage();
   const canEdit = hasPermission('pages.edit');
   const canDelete = hasPermission('pages.delete');
   const isOwner = page ? page.created_by === user?.id : false;
@@ -39,7 +41,7 @@ export default function PageView() {
     if (!id) return;
     setLoading(true);
     Promise.all([
-      api.getPage(id).then(setPage).catch((err) => setError(err.status === 404 ? 'Seite nicht gefunden.' : err.message)),
+      api.getPage(id).then(setPage).catch((err) => setError(err.status === 404 ? t('pageview.not_found') : err.message)),
       api.checkFavorite(id).then(r => setFavorited(r.favorited)).catch(() => {}),
       api.getPageTags(id).then(setTags).catch(() => {}),
       api.getAttachments(id).then(setAttachments).catch(() => {}),
@@ -51,8 +53,8 @@ export default function PageView() {
     try {
       const result = await api.toggleFavorite(id);
       setFavorited(result.favorited);
-      showToast(result.favorited ? 'Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt', 'success');
-    } catch { showToast('Fehler beim Ändern der Favoriten', 'error'); }
+      showToast(result.favorited ? t('pageview.fav_added') : t('pageview.fav_removed'), 'success');
+    } catch { showToast(t('pageview.fav_error'), 'error'); }
   };
 
   const openTagPicker = async () => {
@@ -60,7 +62,7 @@ export default function PageView() {
       const all = await api.getTags();
       setAllTags(all);
       setShowTagPicker(true);
-    } catch { showToast('Tags konnten nicht geladen werden', 'error'); }
+    } catch { showToast(t('pageview.tags_error'), 'error'); }
   };
 
   const toggleTag = async (tagId: number) => {
@@ -72,7 +74,7 @@ export default function PageView() {
     try {
       const updated = await api.setPageTags(id, newIds);
       setTags(updated);
-    } catch { showToast('Tags konnten nicht aktualisiert werden', 'error'); }
+    } catch { showToast(t('pageview.tags_update_error'), 'error'); }
   };
 
   const handleDeleteTag = async () => {
@@ -81,7 +83,7 @@ export default function PageView() {
       await api.deleteTag(confirmDeleteTag.id);
       setTags(prev => prev.filter(t => t.id !== confirmDeleteTag.id));
       setAllTags(prev => prev.filter(t => t.id !== confirmDeleteTag.id));
-      showToast(`Tag "${confirmDeleteTag.name}" gelöscht`, 'success');
+      showToast(t('pageview.tag_deleted_toast', { name: confirmDeleteTag.name }), 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -106,9 +108,9 @@ export default function PageView() {
         })
         .from(element)
         .save();
-      showToast('PDF exportiert', 'success');
+      showToast(t('pageview.pdf_exported'), 'success');
     } catch {
-      showToast('PDF-Export fehlgeschlagen', 'error');
+      showToast(t('pageview.pdf_error'), 'error');
     }
   };
 
@@ -116,7 +118,7 @@ export default function PageView() {
     if (!page) return;
     try {
       await api.deletePage(page.id);
-      showToast('Seite in Papierkorb verschoben', 'success');
+      showToast(t('pageview.page_deleted_toast'), 'success');
       navigate('/pages');
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -135,10 +137,10 @@ export default function PageView() {
         setAttachments(prev => [att, ...prev]);
         successCount++;
       } catch (err: any) {
-        showToast(`Fehler beim Hochladen von "${file.name}": ${err.message}`, 'error');
+        showToast(`${err.message}`, 'error');
       }
     }
-    if (successCount > 0) showToast(`${successCount} Datei(en) hochgeladen`, 'success');
+    if (successCount > 0) showToast(t('pageview.files_uploaded', { count: successCount }), 'success');
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -147,7 +149,7 @@ export default function PageView() {
     try {
       await api.deleteAttachment(att.id);
       setAttachments(prev => prev.filter(a => a.id !== att.id));
-      showToast('Anhang gelöscht', 'success');
+      showToast(t('pageview.att_deleted'), 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -172,7 +174,7 @@ export default function PageView() {
   };
 
   const formatDateLong = (s: string) =>
-    new Date(s).toLocaleDateString('de-DE', {
+    new Date(s).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -215,7 +217,7 @@ export default function PageView() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Laden…" />
+        <PageHeader title={t('pageview.loading')} />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -224,13 +226,13 @@ export default function PageView() {
   if (error || !page) {
     return (
       <>
-        <PageHeader title="Fehler" />
+        <PageHeader title={t('pageview.error')} />
         <div className="content-body">
           <div className="card">
-            <p className="error-text">{error || 'Seite nicht gefunden.'}</p>
+            <p className="error-text">{error || t('pageview.not_found')}</p>
             <div className="btn-row">
               <Link to="/pages" className="btn btn-secondary">
-                <ArrowLeft size={16} /> Zurück zu Seiten
+                <ArrowLeft size={16} /> {t('pageview.back')}
               </Link>
             </div>
           </div>
@@ -248,39 +250,39 @@ export default function PageView() {
             {/* Workflow-Status */}
             {(page as any).workflow_status && (
               <span className="btn btn-secondary" style={{ cursor: 'default', opacity: 0.85 }}>
-                {(page as any).workflow_status === 'published' ? '✅ Veröffentlicht' :
-                 (page as any).workflow_status === 'draft' ? '📝 Entwurf' :
-                 (page as any).workflow_status === 'review' ? '🔍 In Prüfung' :
+                {(page as any).workflow_status === 'published' ? t('pageview.status_published') :
+                 (page as any).workflow_status === 'draft' ? t('pageview.status_draft') :
+                 (page as any).workflow_status === 'review' ? t('pageview.status_review') :
                  (page as any).workflow_status}
               </span>
             )}
             <button
               className={`btn ${favorited ? 'btn-warning' : 'btn-secondary'}`}
               onClick={toggleFavorite}
-              title={favorited ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
+              title={favorited ? t('pageview.fav_remove_title') : t('pageview.fav_add_title')}
             >
               <Star size={16} fill={favorited ? 'currentColor' : 'none'} />
             </button>
             {canEdit && (
               <Link to={`/pages/${page.id}/edit`} className="btn btn-primary">
                 <Edit3 size={16} />
-                <span>Bearbeiten</span>
+                <span>{t('pageview.btn_edit')}</span>
               </Link>
             )}
             {canEdit && (
               <Link to={`/pages/${page.id}/history`} className="btn btn-secondary">
                 <History size={16} />
-                <span>Verlauf</span>
+                <span>{t('pageview.btn_history')}</span>
               </Link>
             )}
             <a href={api.exportPage(page.id)} className="btn btn-secondary" download>
               <Download size={16} />
-              <span>Exportieren</span>
+              <span>{t('pageview.btn_export')}</span>
             </a>
             {tocItems.length > 0 && (
-              <button className={`btn ${showToc ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowToc(!showToc)} title="Inhaltsverzeichnis">
+              <button className={`btn ${showToc ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setShowToc(!showToc)} title={t('pageview.btn_toc_title')}>
                 <List size={16} />
-                <span>Inhalt</span>
+                <span>{t('pageview.btn_toc')}</span>
               </button>
             )}
             <button className="btn btn-secondary" onClick={handlePdfExport} title="Als PDF exportieren">
@@ -290,7 +292,7 @@ export default function PageView() {
             {canDelete && (
               <button className="btn btn-danger" onClick={() => setConfirmDelete(true)}>
                 <Trash2 size={16} />
-                <span>Löschen</span>
+                <span>{t('pageview.btn_delete')}</span>
               </button>
             )}
           </div>
@@ -302,9 +304,9 @@ export default function PageView() {
         {(page as any).workflow_status && (page as any).workflow_status !== 'published' && (
           <div className="draft-banner">
             <span>
-              {(page as any).workflow_status === 'draft' && <>📝 Diese Seite ist ein <strong>Entwurf</strong> und noch nicht veröffentlicht.</>}
-              {(page as any).workflow_status === 'review' && <>🔍 Diese Seite befindet sich <strong>in Prüfung</strong>.</>}
-              {!['draft', 'review'].includes((page as any).workflow_status) && <><strong>Status:</strong> {(page as any).workflow_status}</>}
+              {(page as any).workflow_status === 'draft' && <>{t('pageview.banner_draft')}</>}
+              {(page as any).workflow_status === 'review' && <>{t('pageview.banner_review')}</>}
+              {!['draft', 'review'].includes((page as any).workflow_status) && <><strong>{t('pageview.status_label')}</strong> {(page as any).workflow_status}</>}
             </span>
           </div>
         )}
@@ -318,7 +320,7 @@ export default function PageView() {
           ))}
           {canEdit && (
             <button className="tag-add-btn" onClick={openTagPicker}>
-              <Tag size={14} /> {tags.length === 0 ? 'Tags hinzufügen' : '+'}
+              <Tag size={14} /> {tags.length === 0 ? t('pageview.tags_add') : '+'}
             </button>
           )}
         </div>
@@ -327,9 +329,9 @@ export default function PageView() {
         {showTagPicker && (
           <div className="tag-picker-overlay" onClick={() => setShowTagPicker(false)}>
             <div className="tag-picker" onClick={e => e.stopPropagation()}>
-              <h4>Tags auswählen</h4>
+              <h4>{t('pageview.tags_select')}</h4>
               <div className="tag-picker-list">
-                {allTags.length === 0 && <p className="text-muted" style={{ fontSize: '0.85rem' }}>Noch keine Tags. Erstelle Tags, um Seiten zu kategorisieren.</p>}
+                {allTags.length === 0 && <p className="text-muted" style={{ fontSize: '0.85rem' }}>{t('pageview.tags_empty')}</p>}
                 {allTags.map(tag => {
                   const isSelected = tags.some(t => t.id === tag.id);
                   return (
@@ -343,7 +345,7 @@ export default function PageView() {
                         <span>{tag.name}</span>
                         {isSelected && <span className="tag-check">✓</span>}
                       </button>
-                      <button className="icon-btn danger tag-delete-btn" title="Delete tag" onClick={() => setConfirmDeleteTag(tag)}>
+                      <button className="icon-btn danger tag-delete-btn" title={t('common.delete')} onClick={() => setConfirmDeleteTag(tag)}>
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -351,7 +353,7 @@ export default function PageView() {
                 })}
               </div>
               <button className="btn btn-secondary" onClick={() => setShowTagPicker(false)} style={{ marginTop: 12, width: '100%' }}>
-                Fertig
+                {t('common.done')}
               </button>
             </div>
           </div>
@@ -361,7 +363,7 @@ export default function PageView() {
           {/* Table of Contents */}
           {showToc && tocItems.length > 0 && (
             <nav className="toc-sidebar">
-              <h4 className="toc-title">Inhaltsverzeichnis</h4>
+              <h4 className="toc-title">{t('pageview.toc_title')}</h4>
               <ul className="toc-list">
                 {tocItems.map(item => (
                   <li key={item.id} className={`toc-item toc-level-${item.level}`}>
@@ -385,7 +387,7 @@ export default function PageView() {
         {/* Attachments */}
         <div className="attachments-section">
           <div className="attachments-header">
-            <h3><Paperclip size={18} /> Anhänge {attachments.length > 0 && <span className="attachments-count">{attachments.length}</span>}</h3>
+            <h3><Paperclip size={18} /> {t('pageview.attachments')} {attachments.length > 0 && <span className="attachments-count">{attachments.length}</span>}</h3>
             {canEdit && (
               <div className="attachments-actions">
                 <input
@@ -397,7 +399,7 @@ export default function PageView() {
                 />
                 <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                   <Upload size={14} />
-                  <span>{uploading ? 'Wird hochgeladen…' : 'Datei hochladen'}</span>
+                  <span>{uploading ? t('pageview.upload_loading') : t('pageview.upload_btn')}</span>
                 </button>
               </div>
             )}
@@ -415,7 +417,7 @@ export default function PageView() {
               }}
             >
               <Upload size={20} />
-              <span>Dateien hierher ziehen</span>
+              <span>{t('pageview.upload_drop')}</span>
             </div>
           )}
 
@@ -435,15 +437,15 @@ export default function PageView() {
                     <span className="attachment-meta">
                       {formatFileSize(att.size_bytes)}
                       {att.uploaded_by_name && ` · ${att.uploaded_by_name}`}
-                      {' · '}{new Date(att.created_at).toLocaleDateString('de-DE')}
+                      {' · '}{new Date(att.created_at).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US')}
                     </span>
                   </div>
                   <div className="attachment-actions">
-                    <a href={api.downloadAttachmentUrl(att.id)} className="icon-btn" title="Download" download>
+                    <a href={api.downloadAttachmentUrl(att.id)} className="icon-btn" title={t('common.download')} download>
                       <Download size={15} />
                     </a>
                     {canEdit && (
-                      <button className="icon-btn danger" title="Delete" onClick={() => setConfirmDeleteAtt(att)}>
+                      <button className="icon-btn danger" title={t('common.delete')} onClick={() => setConfirmDeleteAtt(att)}>
                         <Trash2 size={15} />
                       </button>
                     )}
@@ -457,16 +459,16 @@ export default function PageView() {
         <div className="page-view-meta">
           <div className="meta-item">
             <Calendar size={14} />
-            <span>Erstellt {formatDateLong(page.created_at)}</span>
+            <span>{t('pageview.meta_created')} {formatDateLong(page.created_at)}</span>
           </div>
           <div className="meta-item">
             <RefreshCw size={14} />
-            <span>Aktualisiert {formatDateLong(page.updated_at)}</span>
+            <span>{t('pageview.meta_updated')} {formatDateLong(page.updated_at)}</span>
           </div>
           {(page as any).created_by_name && (
             <div className="meta-item">
               <User size={14} />
-              <span>Autor: {(page as any).created_by_name}</span>
+              <span>{t('pageview.meta_author')} {(page as any).created_by_name}</span>
             </div>
           )}
         </div>
@@ -474,16 +476,16 @@ export default function PageView() {
         <div className="btn-row" style={{ marginTop: 24 }}>
           <Link to="/pages" className="btn btn-secondary">
             <ArrowLeft size={16} />
-            <span>Zurück zu Seiten</span>
+            <span>{t('pageview.back')}</span>
           </Link>
         </div>
       </div>
 
       {confirmDelete && page && (
         <ConfirmDialog
-          title="Seite löschen?"
-          message={`"${page.title}" wird in den Papierkorb verschoben. Du kannst sie später wiederherstellen.`}
-          confirmLabel="In Papierkorb verschieben"
+          title={t('pageview.delete_title')}
+          message={t('pageview.delete_message', { title: page.title })}
+          confirmLabel={t('pageview.delete_confirm')}
           variant="danger"
           onConfirm={handleDelete}
           onCancel={() => setConfirmDelete(false)}
@@ -492,9 +494,9 @@ export default function PageView() {
 
       {confirmDeleteAtt && (
         <ConfirmDialog
-          title="Anhang löschen?"
-          message={`"${confirmDeleteAtt.original_name}" wird dauerhaft gelöscht.`}
-          confirmLabel="Löschen"
+          title={t('pageview.att_delete_title')}
+          message={t('pageview.att_delete_message', { name: confirmDeleteAtt.original_name })}
+          confirmLabel={t('common.delete')}
           variant="danger"
           onConfirm={() => handleDeleteAttachment(confirmDeleteAtt)}
           onCancel={() => setConfirmDeleteAtt(null)}
@@ -503,9 +505,9 @@ export default function PageView() {
 
       {confirmDeleteTag && (
         <ConfirmDialog
-          title="Tag löschen?"
-          message={`"${confirmDeleteTag.name}" wird von allen Seiten entfernt.`}
-          confirmLabel="Löschen"
+          title={t('pageview.tag_delete_title')}
+          message={t('pageview.tag_delete_message', { name: confirmDeleteTag.name })}
+          confirmLabel={t('common.delete')}
           variant="danger"
           onConfirm={handleDeleteTag}
           onCancel={() => setConfirmDeleteTag(null)}

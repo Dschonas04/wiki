@@ -13,8 +13,10 @@ import { useState, useEffect } from 'react';
 
 // Schild-Icon als visuelles Symbol für Datenschutz
 import { Shield } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function CookieBanner() {
+  const { t } = useLanguage();
   // Sichtbarkeitszustand des Banners
   const [visible, setVisible] = useState(false);
 
@@ -43,13 +45,10 @@ export default function CookieBanner() {
         <Shield size={20} className="cookie-banner-icon" />
         {/* Hinweistext über die Cookie-Nutzung */}
         <p className="cookie-banner-text">
-          <strong>Cookie-Hinweis:</strong> Diese Anwendung verwendet ausschließlich
-          technisch notwendige Cookies für Authentifizierung und Sitzungsverwaltung.
-          Keine Tracking- oder Analyse-Cookies.
+          <strong>{t('cookie.title')}:</strong> {t('cookie.text')}
         </p>
-        {/* Bestätigungsbutton zum Schließen des Banners */}
         <button className="btn btn-primary btn-sm" onClick={dismiss}>
-          Verstanden
+          {t('cookie.dismiss')}
         </button>
       </div>
     </div>

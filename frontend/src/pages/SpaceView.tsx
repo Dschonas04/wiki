@@ -14,6 +14,7 @@ import {
 import { api, type TeamSpace, type Folder, type WikiPage, type SpaceMembership, type UserBasic } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function SpaceView() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +31,7 @@ export default function SpaceView() {
   const [selectedRole, setSelectedRole] = useState<'editor' | 'reviewer' | 'viewer'>('viewer');
   const { isAdmin, user } = useAuth();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const navigate = useNavigate();
 
   const isOwnerOrAdmin = isAdmin || space?.my_role === 'owner';
@@ -44,7 +46,7 @@ export default function SpaceView() {
       setSpace(spaceData);
       setMembers(membersData);
     } catch (err: any) {
-      showToast(err.message || 'Fehler beim Laden', 'error');
+      showToast(err.message || t('spaceview.load_error'), 'error');
     } finally {
       setLoading(false);
     }
@@ -58,7 +60,7 @@ export default function SpaceView() {
     if (!newFolderName.trim()) return;
     try {
       await api.createFolder(spaceId, { name: newFolderName.trim() });
-      showToast('Ordner erstellt', 'success');
+      showToast(t('spaceview.folder_created'), 'success');
       setShowCreateFolder(false);
       setNewFolderName('');
       load();
@@ -74,7 +76,7 @@ export default function SpaceView() {
     try {
       const updated = await api.addSpaceMember(spaceId, selectedUserId, selectedRole);
       setMembers(updated);
-      showToast('Mitglied hinzugefügt', 'success');
+      showToast(t('spaceview.member_added'), 'success');
       setShowAddMember(false);
       setSelectedUserId(0);
     } catch (err: any) {
@@ -84,11 +86,11 @@ export default function SpaceView() {
 
   // Mitglied entfernen
   const handleRemoveMember = async (userId: number) => {
-    if (!confirm('Mitglied wirklich entfernen?')) return;
+    if (!confirm(t('spaceview.remove_confirm'))) return;
     try {
       await api.removeSpaceMember(spaceId, userId);
       setMembers(prev => prev.filter(m => m.user_id !== userId));
-      showToast('Mitglied entfernt', 'success');
+      showToast(t('spaceview.member_removed'), 'success');
     } catch (err: any) {
       showToast(err.message || 'Fehler', 'error');
     }
@@ -105,8 +107,8 @@ export default function SpaceView() {
   // Workflow-Status Labels
   const statusLabel = (status?: string) => {
     const labels: Record<string, string> = {
-      draft: 'Entwurf', in_review: 'In Prüfung', changes_requested: 'Änderungen angefragt',
-      approved: 'Genehmigt', published: 'Veröffentlicht', archived: 'Archiviert',
+      draft: t('workflow.draft'), in_review: t('workflow.in_review'), changes_requested: t('workflow.changes_requested'),
+      approved: t('workflow.approved'), published: t('workflow.published'), archived: t('workflow.archived'),
     };
     return labels[status || ''] || status || '';
   };
@@ -120,7 +122,7 @@ export default function SpaceView() {
   };
 
   if (loading) return <div className="content-body"><div className="loading-spinner" /></div>;
-  if (!space) return <div className="content-body"><p>Bereich nicht gefunden</p></div>;
+  if (!space) return <div className="content-body"><p>{t('spaceview.not_found')}</p></div>;
 
   // Seiten nach Ordnern gruppieren
   const rootPages = space.pages.filter(p => !p.folder_id);
@@ -132,7 +134,7 @@ export default function SpaceView() {
       <div className="page-header">
         <div>
           <Link to="/spaces" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.5rem', fontSize: '0.875rem' }}>
-            <ArrowLeft size={14} /> Zurück zu Team-Bereiche
+            <ArrowLeft size={14} /> {t('spaceview.back')}
           </Link>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Layers size={28} /> {space.name}
@@ -143,10 +145,10 @@ export default function SpaceView() {
           {canWrite && (
             <>
               <button className="btn btn-secondary" onClick={() => setShowCreateFolder(true)}>
-                <FolderPlus size={16} /> Ordner
+                <FolderPlus size={16} /> {t('spaceview.folder_btn')}
               </button>
               <button className="btn btn-primary" onClick={() => navigate(`/pages/new?spaceId=${spaceId}`)}>
-                <Plus size={16} /> Neue Seite
+                <Plus size={16} /> {t('spaceview.new_page')}
               </button>
             </>
           )}
@@ -159,13 +161,13 @@ export default function SpaceView() {
           onClick={() => setTab('pages')}
           style={{ padding: '0.75rem 1.25rem', border: 'none', background: 'none', cursor: 'pointer', fontWeight: tab === 'pages' ? 600 : 400, borderBottom: tab === 'pages' ? '2px solid var(--color-primary)' : '2px solid transparent', marginBottom: '-2px', color: tab === 'pages' ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}
         >
-          <FileText size={16} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} /> Inhalte
+          <FileText size={16} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} /> {t('spaceview.tab_content')}
         </button>
         <button
           onClick={() => setTab('members')}
           style={{ padding: '0.75rem 1.25rem', border: 'none', background: 'none', cursor: 'pointer', fontWeight: tab === 'members' ? 600 : 400, borderBottom: tab === 'members' ? '2px solid var(--color-primary)' : '2px solid transparent', marginBottom: '-2px', color: tab === 'members' ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}
         >
-          <Users size={16} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} /> Mitglieder ({members.length})
+          <Users size={16} style={{ verticalAlign: 'middle', marginRight: '0.25rem' }} /> {t('spaceview.tab_members', { count: members.length })}
         </button>
       </div>
 
@@ -174,11 +176,11 @@ export default function SpaceView() {
         <div className="card" style={{ marginBottom: '1rem' }}>
           <form onSubmit={handleCreateFolder} style={{ display: 'flex', gap: '0.5rem', alignItems: 'end' }}>
             <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-              <label>Ordnername</label>
-              <input type="text" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="Neuer Ordner" autoFocus required />
+              <label>{t('spaceview.folder_name')}</label>
+              <input type="text" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder={t('spaceview.folder_placeholder')} autoFocus required />
             </div>
-            <button type="submit" className="btn btn-primary">Erstellen</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowCreateFolder(false)}>Abbrechen</button>
+            <button type="submit" className="btn btn-primary">{t('common.create')}</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setShowCreateFolder(false)}>{t('common.cancel')}</button>
           </form>
         </div>
       )}
@@ -194,11 +196,11 @@ export default function SpaceView() {
                 <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.75rem' }}>
                   <FolderOpen size={18} /> {folder.name}
                   <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', fontWeight: 400 }}>
-                    ({folderPages.length} Seiten)
+                    {t('spaceview.folder_pages', { count: folderPages.length })}
                   </span>
                 </h3>
                 {folderPages.length === 0 ? (
-                  <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>Keine Seiten in diesem Ordner</p>
+                  <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>{t('spaceview.folder_empty')}</p>
                 ) : (
                   folderPages.map(page => (
                     <Link key={page.id} to={`/pages/${page.id}`} className="list-item" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>
@@ -219,7 +221,7 @@ export default function SpaceView() {
           {rootPages.length > 0 && (
             <div className="card">
               <h3 style={{ margin: '0 0 0.75rem' }}>
-                {folders.length > 0 ? 'Weitere Seiten' : 'Seiten'}
+                {folders.length > 0 ? t('spaceview.section_more') : t('spaceview.section_pages')}
               </h3>
               {rootPages.map(page => (
                 <Link key={page.id} to={`/pages/${page.id}`} className="list-item" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--color-border)' }}>
@@ -237,8 +239,8 @@ export default function SpaceView() {
           {space.pages.length === 0 && folders.length === 0 && (
             <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
               <FileText size={48} style={{ opacity: 0.3, marginBottom: '1rem' }} />
-              <h3>Noch keine Inhalte</h3>
-              <p style={{ color: 'var(--color-text-secondary)' }}>Erstelle eine Seite oder einen Ordner, um loszulegen.</p>
+              <h3>{t('spaceview.empty_title')}</h3>
+              <p style={{ color: 'var(--color-text-secondary)' }}>{t('spaceview.empty_desc')}</p>
             </div>
           )}
         </>
@@ -250,7 +252,7 @@ export default function SpaceView() {
           {isOwnerOrAdmin && (
             <div style={{ marginBottom: '1rem' }}>
               <button className="btn btn-primary" onClick={openAddMember}>
-                <UserPlus size={16} /> Mitglied hinzufügen
+                <UserPlus size={16} /> {t('spaceview.add_member')}
               </button>
             </div>
           )}
@@ -259,23 +261,23 @@ export default function SpaceView() {
             <form onSubmit={handleAddMember} className="card" style={{ marginBottom: '1rem', background: 'var(--color-bg-secondary, var(--color-surface))' }}>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'end' }}>
                 <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                  <label>Benutzer</label>
+                  <label>{t('spaceview.label_user')}</label>
                   <select value={selectedUserId} onChange={e => setSelectedUserId(parseInt(e.target.value))}>
-                    <option value={0}>Benutzer auswählen…</option>
+                    <option value={0}>{t('spaceview.user_placeholder')}</option>
                     {allUsers.map(u => <option key={u.id} value={u.id}>{u.displayName} ({u.username})</option>)}
                   </select>
                 </div>
                 <div className="form-group" style={{ width: '180px', marginBottom: 0 }}>
-                  <label>Rolle</label>
+                  <label>{t('spaceview.label_role')}</label>
                   <select value={selectedRole} onChange={e => setSelectedRole(e.target.value as any)}>
-                    <option value="viewer">Betrachter</option>
-                    <option value="reviewer">Prüfer</option>
-                    <option value="editor">Bearbeiter</option>
-                    <option value="owner">Eigentümer</option>
+                    <option value="viewer">{t('role.viewer')}</option>
+                    <option value="reviewer">{t('role.reviewer')}</option>
+                    <option value="editor">{t('role.editor')}</option>
+                    <option value="owner">{t('role.owner')}</option>
                   </select>
                 </div>
-                <button type="submit" className="btn btn-primary" disabled={!selectedUserId}>Hinzufügen</button>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddMember(false)}>Abbrechen</button>
+                <button type="submit" className="btn btn-primary" disabled={!selectedUserId}>{t('common.add')}</button>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowAddMember(false)}>{t('common.cancel')}</button>
               </div>
             </form>
           )}
@@ -283,15 +285,15 @@ export default function SpaceView() {
           <table className="table" style={{ width: '100%' }}>
             <thead>
               <tr>
-                <th>Benutzer</th>
-                <th>Rolle</th>
-                <th>Globale Rolle</th>
-                {isOwnerOrAdmin && <th style={{ width: '80px' }}>Aktion</th>}
+                <th>{t('spaceview.th_user')}</th>
+                <th>{t('spaceview.th_role')}</th>
+                <th>{t('spaceview.th_global_role')}</th>
+                {isOwnerOrAdmin && <th style={{ width: '80px' }}>{t('spaceview.th_action')}</th>}
               </tr>
             </thead>
             <tbody>
               {members.map(m => {
-                const roleLabels: Record<string, string> = { owner: 'Eigentümer', editor: 'Bearbeiter', reviewer: 'Prüfer', viewer: 'Betrachter' };
+                const roleLabels: Record<string, string> = { owner: t('role.owner'), editor: t('role.editor'), reviewer: t('role.reviewer'), viewer: t('role.viewer') };
                 return (
                   <tr key={m.user_id}>
                     <td>
@@ -303,7 +305,7 @@ export default function SpaceView() {
                     {isOwnerOrAdmin && (
                       <td>
                         {m.user_id !== user?.id && (
-                          <button className="btn btn-sm btn-danger" onClick={() => handleRemoveMember(m.user_id)} title="Entfernen">
+                          <button className="btn btn-sm btn-danger" onClick={() => handleRemoveMember(m.user_id)} title={t('spaceview.remove_member')}>
                             <Trash2 size={14} />
                           </button>
                         )}

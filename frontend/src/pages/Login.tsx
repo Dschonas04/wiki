@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { BookOpen, LogIn, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function Login() {
   const { login } = useAuth();
+  const { t } = useLanguage();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -13,14 +15,14 @@ export default function Login() {
     e.preventDefault();
     setError('');
     if (!username.trim() || !password) {
-      setError('Benutzername und Passwort sind erforderlich.');
+      setError(t('login.error_required'));
       return;
     }
     setLoading(true);
     try {
       await login(username.trim(), password);
     } catch (err: any) {
-      setError(err.message || 'Anmeldung fehlgeschlagen');
+      setError(err.message || t('login.error_failed'));
     } finally {
       setLoading(false);
     }
@@ -34,7 +36,7 @@ export default function Login() {
             <BookOpen size={32} />
           </div>
           <h1>Nexora</h1>
-          <p>Melde dich bei deinem Konto an</p>
+          <p>{t('login.subtitle')}</p>
         </div>
 
         {error && (
@@ -46,13 +48,13 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="username">Benutzername</label>
+            <label htmlFor="username">{t('login.username')}</label>
             <input
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Benutzername eingeben"
+              placeholder={t('login.username_placeholder')}
               autoComplete="username"
               autoFocus
               disabled={loading}
@@ -60,13 +62,13 @@ export default function Login() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Passwort</label>
+            <label htmlFor="password">{t('login.password')}</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Passwort eingeben"
+              placeholder={t('login.password_placeholder')}
               autoComplete="current-password"
               disabled={loading}
             />
@@ -74,12 +76,12 @@ export default function Login() {
 
           <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
             <LogIn size={18} />
-            <span>{loading ? 'Anmeldung…' : 'Anmelden'}</span>
+            <span>{loading ? t('login.submitting') : t('login.submit')}</span>
           </button>
         </form>
 
         <div className="login-footer">
-          <p>Kontaktiere deinen Administrator für Zugangsdaten</p>
+          <p>{t('login.footer')}</p>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ScrollText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, type AuditEntry } from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 
@@ -25,6 +26,7 @@ export default function AuditLog() {
   const [loading, setLoading] = useState(true);
   const limit = 30;
   const { showToast } = useToast();
+  const { t, language } = useLanguage();
 
   const load = async (newOffset: number) => {
     try {
@@ -43,18 +45,18 @@ export default function AuditLog() {
   useEffect(() => { load(0); }, []);
 
   const formatDate = (s: string) =>
-    new Date(s).toLocaleDateString('de-DE', {
+    new Date(s).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US', {
       year: 'numeric', month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
     });
 
-  if (loading && entries.length === 0) return (<><PageHeader title="Audit-Protokoll" /><div className="content-body"><Loading /></div></>);
+  if (loading && entries.length === 0) return (<><PageHeader title={t('audit.title')} /><div className="content-body"><Loading /></div></>);
 
   return (
     <>
       <PageHeader
-        title="Audit-Protokoll"
-        subtitle={`${total} Systemereignisse`}
+        title={t('audit.title')}
+        subtitle={t('audit.subtitle', { count: total })}
       />
 
       <div className="content-body">
@@ -62,12 +64,12 @@ export default function AuditLog() {
           <table className="users-table audit-table">
             <thead>
               <tr>
-                <th>Zeit</th>
-                <th>Benutzer</th>
-                <th>Aktion</th>
-                <th>Ressource</th>
-                <th>IP</th>
-                <th>Details</th>
+                <th>{t('audit.th_time')}</th>
+                <th>{t('audit.th_user')}</th>
+                <th>{t('audit.th_action')}</th>
+                <th>{t('audit.th_resource')}</th>
+                <th>{t('audit.th_ip')}</th>
+                <th>{t('audit.th_details')}</th>
               </tr>
             </thead>
             <tbody>
@@ -96,17 +98,17 @@ export default function AuditLog() {
               disabled={offset === 0}
               onClick={() => load(Math.max(0, offset - limit))}
             >
-              <ChevronLeft size={16} /> Zurück
+              <ChevronLeft size={16} /> {t('audit.prev')}
             </button>
             <span className="pagination-info">
-              {offset + 1}–{Math.min(offset + limit, total)} von {total}
+              {t('audit.page_info', { page: `${offset + 1}–${Math.min(offset + limit, total)}`, total })}
             </span>
             <button
               className="btn btn-secondary btn-sm"
               disabled={offset + limit >= total}
               onClick={() => load(offset + limit)}
             >
-              Weiter <ChevronRight size={16} />
+              {t('audit.next')} <ChevronRight size={16} />
             </button>
           </div>
         )}

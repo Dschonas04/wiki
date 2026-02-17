@@ -22,6 +22,9 @@ import {
   Code, Quote, Minus, Heading1, Heading2, Heading3,
 } from 'lucide-react';
 
+// Internationalisierung
+import { useLanguage } from '../context/LanguageContext';
+
 /**
  * Schnittstelle für die EditorToolbar-Eigenschaften
  */
@@ -35,6 +38,8 @@ interface EditorToolbarProps {
 }
 
 export default function EditorToolbar({ textareaRef, contentType, onUpdate }: EditorToolbarProps) {
+  const { t } = useLanguage();
+
   /**
    * Umschließt den ausgewählten Text mit Vor- und Nachzeichen.
    * Wird für inline-Formatierungen wie Fett, Kursiv, Code usw. verwendet.
@@ -101,42 +106,42 @@ export default function EditorToolbar({ textareaRef, contentType, onUpdate }: Ed
   // Trenner werden mit { sep: true } dargestellt
   const actions: ({ icon?: LucideIcon; text?: string; title: string; action: () => void } | { sep: true })[] = [
     // Textformatierung: Fett und Kursiv
-    { icon: Bold, title: 'Fett (Strg+B)', action: () => wrap(md ? '**' : '<strong>', md ? '**' : '</strong>') },
-    { icon: Italic, title: 'Kursiv (Strg+I)', action: () => wrap(md ? '_' : '<em>', md ? '_' : '</em>') },
+    { icon: Bold, title: t('toolbar.bold'), action: () => wrap(md ? '**' : '<strong>', md ? '**' : '</strong>') },
+    { icon: Italic, title: t('toolbar.italic'), action: () => wrap(md ? '_' : '<em>', md ? '_' : '</em>') },
     { sep: true },
     // Überschriften: H1, H2, H3
-    { icon: Heading1, title: 'Überschrift 1', action: () => md ? insertLine('# ') : wrap('<h1>', '</h1>') },
-    { icon: Heading2, title: 'Überschrift 2', action: () => md ? insertLine('## ') : wrap('<h2>', '</h2>') },
-    { icon: Heading3, title: 'Überschrift 3', action: () => md ? insertLine('### ') : wrap('<h3>', '</h3>') },
+    { icon: Heading1, title: t('toolbar.h1'), action: () => md ? insertLine('# ') : wrap('<h1>', '</h1>') },
+    { icon: Heading2, title: t('toolbar.h2'), action: () => md ? insertLine('## ') : wrap('<h2>', '</h2>') },
+    { icon: Heading3, title: t('toolbar.h3'), action: () => md ? insertLine('### ') : wrap('<h3>', '</h3>') },
     { sep: true },
     // Listen und Zitate
-    { icon: List, title: 'Aufzählung', action: () => md ? insertLine('- ') : insertLine('<li>') },
-    { icon: ListOrdered, title: 'Nummerierte Liste', action: () => md ? insertLine('1. ') : insertLine('<li>') },
-    { icon: Quote, title: 'Zitat', action: () => md ? insertLine('> ') : wrap('<blockquote>', '</blockquote>') },
+    { icon: List, title: t('toolbar.ul'), action: () => md ? insertLine('- ') : insertLine('<li>') },
+    { icon: ListOrdered, title: t('toolbar.ol'), action: () => md ? insertLine('1. ') : insertLine('<li>') },
+    { icon: Quote, title: t('toolbar.quote'), action: () => md ? insertLine('> ') : wrap('<blockquote>', '</blockquote>') },
     { sep: true },
     // Code: Inline und Block
-    { icon: Code, title: 'Inline-Code', action: () => wrap(md ? '`' : '<code>', md ? '`' : '</code>') },
+    { icon: Code, title: t('toolbar.code'), action: () => wrap(md ? '`' : '<code>', md ? '`' : '</code>') },
     {
-      text: '{ }', title: 'Codeblock', action: () =>
+      text: '{ }', title: t('toolbar.codeblock'), action: () =>
         insertBlock(md ? '```\ncode\n```\n' : '<pre><code>\ncode\n</code></pre>\n'),
     },
     { sep: true },
     // Medien: Link, Bild, horizontale Linie und Tabelle
     {
-      icon: LinkIcon, title: 'Link', action: () => {
-        const url = prompt('URL eingeben:');
+      icon: LinkIcon, title: t('toolbar.link'), action: () => {
+        const url = prompt(t('toolbar.link_prompt'));
         if (url) wrap(md ? '[' : `<a href="${url}">`, md ? `](${url})` : '</a>');
       },
     },
     {
-      icon: Image, title: 'Bild', action: () => {
-        const url = prompt('Bild-URL eingeben:');
+      icon: Image, title: t('toolbar.image'), action: () => {
+        const url = prompt(t('toolbar.image_prompt'));
         if (url) insertBlock(md ? `![Bild](${url})\n` : `<img src="${url}" alt="Bild" />\n`);
       },
     },
-    { icon: Minus, title: 'Horizontale Linie', action: () => insertBlock(md ? '\n---\n' : '\n<hr />\n') },
+    { icon: Minus, title: t('toolbar.hr'), action: () => insertBlock(md ? '\n---\n' : '\n<hr />\n') },
     {
-      text: '⊞', title: 'Tabelle', action: () =>
+      text: '⊞', title: t('toolbar.table'), action: () =>
         insertBlock(
           md
             ? '\n| Header | Header |\n|--------|--------|\n| Cell   | Cell   |\n'

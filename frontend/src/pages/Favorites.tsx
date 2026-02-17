@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Star, FileText } from 'lucide-react';
 import { api, type FavoritePage } from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 
@@ -10,11 +11,12 @@ export default function Favorites() {
   const [pages, setPages] = useState<FavoritePage[]>([]);
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
+  const { t, language } = useLanguage();
 
   useEffect(() => {
     api.getFavorites()
       .then(setPages)
-      .catch(() => showToast('Favoriten konnten nicht geladen werden', 'error'))
+      .catch(() => showToast(t('favorites.load_error'), 'error'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -22,14 +24,14 @@ export default function Favorites() {
     try {
       await api.toggleFavorite(pageId);
       setPages(prev => prev.filter(p => p.id !== pageId));
-      showToast('Aus Favoriten entfernt', 'success');
+      showToast(t('favorites.removed_toast'), 'success');
     } catch {
-      showToast('Fehler beim Entfernen des Favoriten', 'error');
+      showToast(t('favorites.remove_error'), 'error');
     }
   };
 
   const formatDate = (s: string) =>
-    new Date(s).toLocaleDateString('de-DE', {
+    new Date(s).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -40,12 +42,12 @@ export default function Favorites() {
 
   return (
     <>
-      <PageHeader title="Favoriten" subtitle={`${pages.length} gespeicherte Seiten`} />
+      <PageHeader title={t('favorites.title')} subtitle={t('favorites.subtitle', { count: pages.length })} />
       <div className="content-body">
         {pages.length === 0 ? (
           <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--c-text-muted)' }}>
             <Star size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
-            <p>Noch keine Favoriten. Markiere Seiten mit einem Stern, um sie hier zu speichern.</p>
+            <p>{t('favorites.empty')}</p>
           </div>
         ) : (
           <div className="recent-pages-list">
@@ -61,7 +63,7 @@ export default function Favorites() {
                 <button
                   className="btn btn-ghost"
                   onClick={() => removeFavorite(page.id)}
-                  title="Aus Favoriten entfernen"
+                  title={t('favorites.remove_title')}
                   style={{ padding: 6, color: '#f59e0b' }}
                 >
                   <Star size={18} fill="currentColor" />

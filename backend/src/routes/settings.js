@@ -102,5 +102,50 @@ router.put('/settings/theme', authenticate, writeLimiter, async (req, res) => {
   }
 });
 
+// ============================================================================
+// GET /settings/language – Aktuelle Sprache des Benutzers abrufen
+// ============================================================================
+const VALID_LANGUAGES = ['de', 'en'];
+
+router.get('/settings/language', authenticate, async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const result = await pool.query(
+      "SELECT setting_value FROM user_settings WHERE user_id = $1 AND setting_key = 'language'",
+      [req.user.id]
+    );
+    const language = result.rows.length > 0 ? result.rows[0].setting_value : 'de';
+    res.json({ language });
+  } catch (err) {
+    console.error('Error getting language:', err.message);
+    res.status(500).json({ error: 'Failed to get language' });
+  }
+});
+
+// ============================================================================
+// PUT /settings/language – Sprache des Benutzers setzen oder ändern
+// ============================================================================
+router.put('/settings/language', authenticate, writeLimiter, async (req, res) => {
+  const pool = getPool();
+  if (!pool) return res.status(503).json({ error: 'Database not connected' });
+  const { language } = req.body;
+  if (!language || !VALID_LANGUAGES.includes(language)) {
+    return res.status(400).json({ error: `Invalid language. Valid: ${VALID_LANGUAGES.join(', ')}` });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO user_settings (user_id, setting_key, setting_value, updated_at)
+       VALUES ($1, 'language', $2, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id, setting_key) DO UPDATE SET setting_value = $2, updated_at = CURRENT_TIMESTAMP`,
+      [req.user.id, language]
+    );
+    res.json({ language });
+  } catch (err) {
+    console.error('Error setting language:', err.message);
+    res.status(500).json({ error: 'Failed to save language' });
+  }
+});
+
 // Router-Modul exportieren, damit es in der Hauptanwendung eingebunden werden kann
 module.exports = router;

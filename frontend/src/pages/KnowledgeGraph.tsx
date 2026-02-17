@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Network, ZoomIn, ZoomOut, Maximize2, RefreshCw } from 'lucide-react';
 import { api, type GraphData, type GraphNode, type GraphEdge } from '../api/client';
+import { useLanguage } from '../context/LanguageContext';
 
 interface SimNode extends GraphNode {
   x: number;
@@ -20,6 +21,7 @@ export default function KnowledgeGraph() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +43,7 @@ export default function KnowledgeGraph() {
       const data = await api.getGraph();
       setGraphData(data);
     } catch (err: any) {
-      setError(err.message || 'Graph-Daten konnten nicht geladen werden');
+      setError(err.message || t('graph.load_error'));
     } finally {
       setLoading(false);
     }
@@ -325,18 +327,18 @@ export default function KnowledgeGraph() {
     <div className="content-body">
       <div className="content-header">
         <div className="content-header-left">
-          <h1><Network size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} />Wissensgraph</h1>
+          <h1><Network size={24} style={{ verticalAlign: 'middle', marginRight: 8 }} />{t('graph.title')}</h1>
           {graphData && (
             <span style={{ fontSize: '0.85rem', color: 'var(--c-text-muted)' }}>
-              {pageCount} Seiten · {graphData.edges.length} Verbindungen
+              {t('graph.pages', { count: pageCount })} · {t('graph.connections', { count: graphData.edges.length })}
             </span>
           )}
         </div>
         <div className="content-header-actions">
-          <button className="btn btn-ghost" onClick={zoomIn} title="Vergrößern"><ZoomIn size={18} /></button>
-          <button className="btn btn-ghost" onClick={zoomOut} title="Verkleinern"><ZoomOut size={18} /></button>
-          <button className="btn btn-ghost" onClick={resetZoom} title="Ansicht zurücksetzen"><Maximize2 size={18} /></button>
-          <button className="btn btn-secondary" onClick={loadGraph}><RefreshCw size={16} /> Aktualisieren</button>
+          <button className="btn btn-ghost" onClick={zoomIn} title={t('graph.zoom_in')}><ZoomIn size={18} /></button>
+          <button className="btn btn-ghost" onClick={zoomOut} title={t('graph.zoom_out')}><ZoomOut size={18} /></button>
+          <button className="btn btn-ghost" onClick={resetZoom} title={t('graph.reset_view')}><Maximize2 size={18} /></button>
+          <button className="btn btn-secondary" onClick={loadGraph}><RefreshCw size={16} /> {t('common.refresh')}</button>
         </div>
       </div>
 
@@ -344,7 +346,7 @@ export default function KnowledgeGraph() {
 
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 400, color: 'var(--c-text-muted)' }}>
-          Graph wird geladen…
+          {t('graph.loading')}
         </div>
       ) : (
         <div
@@ -375,12 +377,12 @@ export default function KnowledgeGraph() {
             display: 'flex', gap: 16, alignItems: 'center',
           }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-success)', display: 'inline-block' }} /> Veröffentlicht
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-success)', display: 'inline-block' }} /> {t('graph.published')}
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-primary)', display: 'inline-block' }} /> Entwurf
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--c-primary)', display: 'inline-block' }} /> {t('graph.draft')}
             </span>
-            <span style={{ opacity: 0.6 }}>Klicken zum Öffnen · Scrollen zum Zoomen · Ziehen zum Verschieben</span>
+            <span style={{ opacity: 0.6 }}>{t('graph.hint')}</span>
           </div>
           {hoveredNode && (
             <div style={{

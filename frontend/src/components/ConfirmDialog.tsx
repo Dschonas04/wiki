@@ -10,6 +10,9 @@
 // Icons für das Warnsymbol und den Schließen-Button
 import { AlertTriangle, X } from 'lucide-react';
 
+// Internationalisierung
+import { useLanguage } from '../context/LanguageContext';
+
 /**
  * Schnittstelle für die ConfirmDialog-Eigenschaften
  */
@@ -33,12 +36,15 @@ interface ConfirmDialogProps {
 export default function ConfirmDialog({
   title,
   message,
-  confirmLabel = 'Bestätigen',
-  cancelLabel = 'Abbrechen',
+  confirmLabel,
+  cancelLabel,
   variant = 'danger',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useLanguage();
+  const resolvedConfirmLabel = confirmLabel ?? t('confirm.default_confirm');
+  const resolvedCancelLabel = cancelLabel ?? t('confirm.default_cancel');
   return (
     // Overlay: Schließt den Dialog beim Klick auf den Hintergrund
     <div className="confirm-overlay" onClick={onCancel}>
@@ -59,7 +65,7 @@ export default function ConfirmDialog({
         {/* Aktionsbereich: Abbrechen- und Bestätigungsbutton */}
         <div className="confirm-actions">
           <button className="btn btn-secondary" onClick={onCancel}>
-            {cancelLabel}
+            {resolvedCancelLabel}
           </button>
           {/* Bestätigungsbutton: CSS-Klasse variiert je nach Variante */}
           <button
@@ -67,7 +73,7 @@ export default function ConfirmDialog({
             onClick={onConfirm}
             autoFocus
           >
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </button>
         </div>
       </div>

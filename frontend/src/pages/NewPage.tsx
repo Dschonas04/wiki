@@ -6,6 +6,7 @@ import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import EditorToolbar from '../components/EditorToolbar';
 
@@ -13,6 +14,7 @@ export default function NewPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const isAdmin = user?.globalRole === 'admin';
   const [searchParams] = useSearchParams();
   const urlSpaceId = searchParams.get('spaceId');
@@ -120,9 +122,9 @@ export default function NewPage() {
         }
       }
       if (uploadFails > 0) {
-        showToast(`Seite erstellt, aber ${uploadFails} Datei(en) konnten nicht hochgeladen werden`, 'error');
+        showToast(t('newpage.created_partial', { count: uploadFails }), 'error');
       } else {
-        showToast('Seite erstellt!', 'success');
+        showToast(t('newpage.created_toast'), 'success');
       }
       setIsDirty(false);
       navigate(`/pages/${page.id}`);
@@ -134,18 +136,18 @@ export default function NewPage() {
 
   return (
     <>
-      <PageHeader title="Neue Seite" subtitle="Neue Wiki-Seite erstellen" />
+      <PageHeader title={t('newpage.title')} subtitle={t('newpage.subtitle')} />
 
       <div className="content-body">
         <form className="page-form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="title">Titel</label>
+            <label htmlFor="title">{t('newpage.label_title')}</label>
             <input
               id="title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Beschreibenden Titel eingeben…"
+              placeholder={t('newpage.title_placeholder')}
               required
               maxLength={255}
               autoFocus
@@ -154,13 +156,13 @@ export default function NewPage() {
 
           <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
-              <label htmlFor="parentId">Übergeordnete Seite (optional)</label>
+              <label htmlFor="parentId">{t('newpage.label_parent')}</label>
               <select
                 id="parentId"
                 value={parentId ?? ''}
                 onChange={(e) => setParentId(e.target.value ? parseInt(e.target.value) : null)}
               >
-                <option value="">— Keine (oberste Ebene) —</option>
+                <option value="">{t('newpage.parent_none')}</option>
                 {allPages.map((p) => (
                   <option key={p.id} value={p.id}>{p.title}</option>
                 ))}
@@ -168,7 +170,7 @@ export default function NewPage() {
             </div>
 
             <div className="form-group" style={{ flex: 0 }}>
-              <label>Inhaltstyp</label>
+              <label>{t('newpage.label_type')}</label>
               <div className="content-type-toggle">
                 <button
                   type="button"
@@ -190,12 +192,12 @@ export default function NewPage() {
 
           <div className="form-group">
             <span className="form-hint" style={{ color: 'var(--c-text-muted)' }}>
-              Seite wird als Entwurf erstellt. Du kannst sie später zur Veröffentlichung einreichen.
+              {t('newpage.draft_hint')}
             </span>
           </div>
 
           <div className="form-group">
-            <label>Tags</label>
+            <label>{t('newpage.label_tags')}</label>
             <div className="editor-tags-bar">
               {selectedTagIds.map(tagId => {
                 const tag = allTags.find(t => t.id === tagId);
@@ -208,7 +210,7 @@ export default function NewPage() {
                 );
               })}
               <button type="button" className="tag-add-btn" onClick={() => setShowTagPicker(!showTagPicker)}>
-                <Tag size={14} /> {selectedTagIds.length === 0 ? 'Tags hinzufügen' : '+'}
+                <Tag size={14} /> {selectedTagIds.length === 0 ? t('newpage.tags_add') : '+'}
               </button>
             </div>
             {showTagPicker && (
@@ -237,23 +239,23 @@ export default function NewPage() {
                     className="tag-color-input"
                     value={newTagColor}
                     onChange={e => setNewTagColor(e.target.value)}
-                    title="Tag color"
+                    title={t('newpage.tag_color')}
                   />
                   <input
                     type="text"
-                    placeholder="Neuer Tag-Name…"
+                    placeholder={t('newpage.tag_name_placeholder')}
                     value={newTagName}
                     onChange={e => setNewTagName(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndSelectTag(); } }}
                   />
-                  <button type="button" className="btn btn-sm btn-primary" onClick={createAndSelectTag} disabled={!newTagName.trim()}>Erstellen</button>
+                  <button type="button" className="btn btn-sm btn-primary" onClick={createAndSelectTag} disabled={!newTagName.trim()}>{t('common.create')}</button>
                 </div>
               </div>
             )}
           </div>
 
           <div className="form-group">
-            <label><Paperclip size={14} style={{ verticalAlign: 'middle' }} /> Anhänge</label>
+            <label><Paperclip size={14} style={{ verticalAlign: 'middle' }} /> {t('newpage.label_attachments')}</label>
             <div className="newpage-files-area"
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
@@ -262,7 +264,7 @@ export default function NewPage() {
               {pendingFiles.length === 0 ? (
                 <button type="button" className="newpage-files-placeholder" onClick={() => fileInputRef.current?.click()}>
                   <Upload size={18} />
-                  <span>Dateien hierher ziehen oder klicken</span>
+                  <span>{t('newpage.attachments_drop')}</span>
                 </button>
               ) : (
                 <>
@@ -272,12 +274,12 @@ export default function NewPage() {
                         <Paperclip size={13} />
                         <span className="newpage-file-name">{f.name}</span>
                         <span className="newpage-file-size">{formatFileSize(f.size)}</span>
-                        <button type="button" className="icon-btn danger" onClick={() => removeFile(i)} title="Remove"><Trash2 size={13} /></button>
+                        <button type="button" className="icon-btn danger" onClick={() => removeFile(i)} title={t('common.remove')}><Trash2 size={13} /></button>
                       </div>
                     ))}
                   </div>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()} style={{ marginTop: 6 }}>
-                    <Upload size={14} /> Weitere hinzufügen
+                    <Upload size={14} /> {t('newpage.attachments_add_more')}
                   </button>
                 </>
               )}
@@ -286,14 +288,14 @@ export default function NewPage() {
 
           <div className="editor-grid">
             <div className="form-group">
-              <label htmlFor="content">Inhalt ({contentType === 'markdown' ? 'Markdown' : 'HTML'})</label>
+              <label htmlFor="content">{t('newpage.label_content', { type: contentType === 'markdown' ? 'Markdown' : 'HTML' })}</label>
               <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
               <textarea
                 ref={contentRef}
                 id="content"
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={contentType === 'markdown' ? 'Inhalt in Markdown schreiben…' : 'HTML-Inhalt schreiben…'}
+                placeholder={contentType === 'markdown' ? t('newpage.md_placeholder') : t('newpage.html_placeholder')}
                 required
                 maxLength={100000}
                 rows={14}
@@ -301,7 +303,7 @@ export default function NewPage() {
             </div>
 
             <div className="form-group">
-              <label>Vorschau</label>
+              <label>{t('newpage.label_preview')}</label>
               <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
@@ -309,11 +311,11 @@ export default function NewPage() {
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>
               <Save size={16} />
-              <span>{saving ? 'Wird erstellt…' : 'Seite erstellen'}</span>
+              <span>{saving ? t('newpage.saving') : t('newpage.submit')}</span>
             </button>
             <Link to="/pages" className="btn btn-secondary">
               <X size={16} />
-              <span>Abbrechen</span>
+              <span>{t('common.cancel')}</span>
             </Link>
           </div>
         </form>

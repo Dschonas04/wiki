@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { api, type WikiPage } from '../api/client';
 
 export default function Layout() {
@@ -48,6 +49,7 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, hasPermission, isAdmin, isAuditor } = useAuth();
+  const { t } = useLanguage();
 
   // Anzahl der offenen Veröffentlichungsanträge (für Auditoren/Admins)
   const [publishCount, setPublishCount] = useState(0);
@@ -116,27 +118,20 @@ export default function Layout() {
 
   const closeSidebar = () => setSidebarOpen(false);
 
-  // Deutsche Bezeichnungen für Rollen
-  const roleLabels: Record<string, string> = {
-    admin: 'Administrator',
-    auditor: 'Auditor',
-    user: 'Benutzer',
-  };
-
   // Navigationsstruktur mit Nexora-spezifischen Bereichen
   const navItems: { to: string; icon: any; label: string; end: boolean; show: boolean; badge?: number }[] = [
-    { to: '/', icon: Home, label: 'Startseite', end: true, show: true },
-    { to: '/spaces', icon: Layers, label: 'Team-Bereiche', end: false, show: hasPermission('spaces.read') },
-    { to: '/private', icon: Lock, label: 'Mein Bereich', end: true, show: hasPermission('private.manage') },
-    { to: '/pages', icon: FileText, label: 'Alle Seiten', end: true, show: hasPermission('pages.read') },
-    { to: '/favorites', icon: Star, label: 'Favoriten', end: true, show: true },
-    { to: '/publishing', icon: Send, label: 'Veröffentlichung', end: false, show: true, badge: publishCount > 0 ? publishCount : undefined },
-    { to: '/trash', icon: Trash2, label: 'Papierkorb', end: true, show: hasPermission('pages.read') },
-    { to: '/graph', icon: Network, label: 'Wissensgraph', end: true, show: hasPermission('pages.read') },
-    { to: '/users', icon: Users, label: 'Benutzer', end: true, show: isAdmin },
-    { to: '/audit', icon: ScrollText, label: 'Audit-Protokoll', end: true, show: isAdmin || isAuditor },
-    { to: '/health', icon: Activity, label: 'Systemstatus', end: true, show: hasPermission('health.read') },
-    { to: '/settings', icon: SettingsIcon, label: 'Einstellungen', end: true, show: true },
+    { to: '/', icon: Home, label: t('layout.nav.home'), end: true, show: true },
+    { to: '/spaces', icon: Layers, label: t('layout.nav.spaces'), end: false, show: hasPermission('spaces.read') },
+    { to: '/private', icon: Lock, label: t('layout.nav.private'), end: true, show: hasPermission('private.manage') },
+    { to: '/pages', icon: FileText, label: t('layout.nav.pages'), end: true, show: hasPermission('pages.read') },
+    { to: '/favorites', icon: Star, label: t('layout.nav.favorites'), end: true, show: true },
+    { to: '/publishing', icon: Send, label: t('layout.nav.publishing'), end: false, show: true, badge: publishCount > 0 ? publishCount : undefined },
+    { to: '/trash', icon: Trash2, label: t('layout.nav.trash'), end: true, show: hasPermission('pages.read') },
+    { to: '/graph', icon: Network, label: t('layout.nav.graph'), end: true, show: hasPermission('pages.read') },
+    { to: '/users', icon: Users, label: t('layout.nav.users'), end: true, show: isAdmin },
+    { to: '/audit', icon: ScrollText, label: t('layout.nav.audit'), end: true, show: isAdmin || isAuditor },
+    { to: '/health', icon: Activity, label: t('layout.nav.health'), end: true, show: hasPermission('health.read') },
+    { to: '/settings', icon: SettingsIcon, label: t('layout.nav.settings'), end: true, show: true },
   ];
 
   const handleLogout = async () => {
@@ -157,7 +152,7 @@ export default function Layout() {
       <button
         className={`mobile-toggle ${sidebarOpen ? 'active' : ''}`}
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        aria-label="Navigation umschalten"
+        aria-label={t('layout.toggle_nav')}
       >
         {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
@@ -184,7 +179,7 @@ export default function Layout() {
             <div className="sidebar-user-info">
               <span className="sidebar-user-name">{user.displayName || user.username}</span>
               <span className="sidebar-user-role" style={{ color: roleColor }}>
-                <Shield size={11} /> {roleLabels[user.globalRole] || user.globalRole}
+                <Shield size={11} /> {t(`role.${user.globalRole}`) || user.globalRole}
               </span>
             </div>
           </div>
@@ -196,7 +191,7 @@ export default function Layout() {
             <Search size={15} />
             <input
               type="text"
-              placeholder="Suchen… ⌘K"
+              placeholder={t('layout.search_placeholder')}
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setSearchOpen(true); }}
               onFocus={() => setSearchOpen(true)}
@@ -205,9 +200,9 @@ export default function Layout() {
           {searchOpen && searchQuery.trim() && (
             <div className="sidebar-search-results">
               {searchLoading ? (
-                <div className="search-result-empty">Suche läuft…</div>
+                <div className="search-result-empty">{t('layout.search_running')}</div>
               ) : searchResults.length === 0 ? (
-                <div className="search-result-empty">Keine Ergebnisse gefunden</div>
+                <div className="search-result-empty">{t('layout.search_no_results')}</div>
               ) : (
                 <>
                   {searchResults.map(page => (
@@ -235,7 +230,7 @@ export default function Layout() {
                     }}
                   >
                     <Search size={14} />
-                    <span>Alle Ergebnisse anzeigen</span>
+                    <span>{t('layout.search_show_all')}</span>
                   </button>
                 </>
               )}
@@ -245,7 +240,7 @@ export default function Layout() {
 
         {/* Hauptnavigation */}
         <nav className="sidebar-nav">
-          <div className="nav-label">Navigation</div>
+          <div className="nav-label">{t('layout.nav_label')}</div>
           {navItems.filter(n => n.show).map(({ to, icon: Icon, label, end, badge }) => (
             <NavLink
               key={to}
@@ -267,11 +262,11 @@ export default function Layout() {
         <div className="sidebar-footer">
           <button className="sidebar-logout" onClick={handleLogout}>
             <LogOut size={16} />
-            <span>Abmelden</span>
+            <span>{t('layout.logout')}</span>
           </button>
           <div className="sidebar-footer-text">
             <span className="status-dot" />
-            <span>System Online</span>
+            <span>{t('layout.system_online')}</span>
           </div>
         </div>
       </aside>

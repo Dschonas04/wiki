@@ -14,6 +14,7 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ToastProvider } from './context/ToastContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
 import Layout from './components/Layout';
 import Loading from './components/Loading';
 import CookieBanner from './components/CookieBanner';
@@ -140,10 +141,12 @@ function AppRoutes() {
 export default function App() {
   return (
     <ToastProvider>
-      <AuthProvider>
-        <AppRoutes />
-        <CookieBanner />
-      </AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <AppRoutes />
+          <CookieBanner />
+        </AuthProvider>
+      </LanguageProvider>
     </ToastProvider>
   );
 }

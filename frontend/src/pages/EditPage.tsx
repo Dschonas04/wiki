@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType } from '../api/client';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 import PageHeader from '../components/PageHeader';
 import Loading from '../components/Loading';
 import EditorToolbar from '../components/EditorToolbar';
@@ -13,6 +14,7 @@ export default function EditPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [contentType, setContentType] = useState<'markdown' | 'html'>('markdown');
@@ -107,7 +109,7 @@ export default function EditPage() {
         contentType,
       });
       await api.setPageTags(id, selectedTagIds).catch(() => {});
-      showToast('Seite aktualisiert!', 'success');
+      showToast(t('editpage.updated_toast'), 'success');
       setIsDirty(false);
       navigate(`/pages/${id}`);
     } catch (err: any) {
@@ -122,7 +124,7 @@ export default function EditPage() {
   if (loading) {
     return (
       <>
-        <PageHeader title="Seite bearbeiten" />
+        <PageHeader title={t('editpage.title')} />
         <div className="content-body"><Loading /></div>
       </>
     );
@@ -131,7 +133,7 @@ export default function EditPage() {
   if (error) {
     return (
       <>
-        <PageHeader title="Fehler" />
+        <PageHeader title={t('editpage.error')} />
         <div className="content-body">
           <div className="card">
             <p className="error-text">{error}</p>
@@ -143,12 +145,12 @@ export default function EditPage() {
 
   return (
     <>
-      <PageHeader title="Seite bearbeiten" subtitle={title} />
+      <PageHeader title={t('editpage.title')} subtitle={title} />
 
       <div className="content-body">
         <form className="page-form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="title">Titel</label>
+            <label htmlFor="title">{t('editpage.label_title')}</label>
             <input
               id="title"
               type="text"
@@ -161,13 +163,13 @@ export default function EditPage() {
 
           <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
-              <label htmlFor="parentId">Übergeordnete Seite (optional)</label>
+              <label htmlFor="parentId">{t('editpage.label_parent')}</label>
               <select
                 id="parentId"
                 value={parentId ?? ''}
                 onChange={(e) => setParentId(e.target.value ? parseInt(e.target.value) : null)}
               >
-                <option value="">— Keine (oberste Ebene) —</option>
+                <option value="">{t('editpage.parent_none')}</option>
                 {parentOptions.map((p) => (
                   <option key={p.id} value={p.id}>{p.title}</option>
                 ))}
@@ -175,7 +177,7 @@ export default function EditPage() {
             </div>
 
             <div className="form-group" style={{ flex: 0 }}>
-              <label>Inhaltstyp</label>
+              <label>{t('editpage.label_type')}</label>
               <div className="content-type-toggle">
                 <button
                   type="button"
@@ -196,7 +198,7 @@ export default function EditPage() {
           </div>
 
           <div className="form-group">
-            <label>Tags</label>
+            <label>{t('editpage.label_tags')}</label>
             <div className="editor-tags-bar">
               {selectedTagIds.map(tagId => {
                 const tag = allTags.find(t => t.id === tagId);
@@ -209,7 +211,7 @@ export default function EditPage() {
                 );
               })}
               <button type="button" className="tag-add-btn" onClick={() => setShowTagPicker(!showTagPicker)}>
-                <Tag size={14} /> {selectedTagIds.length === 0 ? 'Tags hinzufügen' : '+'}
+                <Tag size={14} /> {selectedTagIds.length === 0 ? t('editpage.tags_add') : '+'}
               </button>
             </div>
             {showTagPicker && (
@@ -238,16 +240,16 @@ export default function EditPage() {
                     className="tag-color-input"
                     value={newTagColor}
                     onChange={e => setNewTagColor(e.target.value)}
-                    title="Tag-Farbe"
+                    title={t('editpage.tag_color')}
                   />
                   <input
                     type="text"
-                    placeholder="Neuer Tag-Name…"
+                    placeholder={t('editpage.tag_name_placeholder')}
                     value={newTagName}
                     onChange={e => setNewTagName(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); createAndSelectTag(); } }}
                   />
-                  <button type="button" className="btn btn-sm btn-primary" onClick={createAndSelectTag} disabled={!newTagName.trim()}>Erstellen</button>
+                  <button type="button" className="btn btn-sm btn-primary" onClick={createAndSelectTag} disabled={!newTagName.trim()}>{t('common.create')}</button>
                 </div>
               </div>
             )}
@@ -255,7 +257,7 @@ export default function EditPage() {
 
           <div className="editor-grid">
             <div className="form-group">
-              <label htmlFor="content">Inhalt ({contentType === 'markdown' ? 'Markdown' : 'HTML'})</label>
+              <label htmlFor="content">{t('editpage.label_content', { type: contentType === 'markdown' ? 'Markdown' : 'HTML' })}</label>
               <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
               <textarea
                 ref={contentRef}
@@ -269,7 +271,7 @@ export default function EditPage() {
             </div>
 
             <div className="form-group">
-              <label>Vorschau</label>
+              <label>{t('editpage.label_preview')}</label>
               <div className="markdown-preview markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
             </div>
           </div>
@@ -277,11 +279,11 @@ export default function EditPage() {
           <div className="form-actions">
             <button type="submit" className="btn btn-primary" disabled={saving}>
               <Save size={16} />
-              <span>{saving ? 'Wird gespeichert…' : 'Änderungen speichern'}</span>
+              <span>{saving ? t('editpage.saving') : t('editpage.submit')}</span>
             </button>
             <Link to={`/pages/${id}`} className="btn btn-secondary">
               <X size={16} />
-              <span>Abbrechen</span>
+              <span>{t('common.cancel')}</span>
             </Link>
           </div>
         </form>

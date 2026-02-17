@@ -13,6 +13,7 @@ import {
 import { api, type WikiPage, type TeamSpace, type Folder } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function PrivateSpacePage() {
   const [pages, setPages] = useState<WikiPage[]>([]);
@@ -26,6 +27,7 @@ export default function PrivateSpacePage() {
   const [publishNote, setPublishNote] = useState('');
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { t, language } = useLanguage();
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -33,7 +35,7 @@ export default function PrivateSpacePage() {
       const data = await api.getPrivateSpace();
       setPages(data.pages || []);
     } catch (err: any) {
-      showToast(err.message || 'Fehler beim Laden', 'error');
+      showToast(err.message || t('private.load_error'), 'error');
     } finally {
       setLoading(false);
     }
@@ -43,8 +45,8 @@ export default function PrivateSpacePage() {
 
   const statusLabel = (status?: string) => {
     const labels: Record<string, string> = {
-      draft: 'Entwurf', in_review: 'In Prüfung', changes_requested: 'Änderungen angefragt',
-      approved: 'Genehmigt', published: 'Veröffentlicht', archived: 'Archiviert',
+      draft: t('workflow.draft'), in_review: t('workflow.in_review'), changes_requested: t('workflow.changes_requested'),
+      approved: t('workflow.approved'), published: t('workflow.published'), archived: t('workflow.archived'),
     };
     return labels[status || ''] || status || '';
   };
@@ -89,7 +91,7 @@ export default function PrivateSpacePage() {
     if (!publishPageId || !targetSpaceId) return;
     try {
       await api.requestPublish({ pageId: publishPageId, targetSpaceId, targetFolderId, comment: publishNote || undefined });
-      showToast('Veröffentlichung beantragt', 'success');
+      showToast(t('private.publish_toast'), 'success');
       setShowPublishDialog(false);
       load();
     } catch (err: any) {
@@ -99,10 +101,10 @@ export default function PrivateSpacePage() {
 
   // Seite löschen
   const handleDelete = async (pageId: number, title: string) => {
-    if (!confirm(`"${title}" wirklich löschen?`)) return;
+    if (!confirm(t('private.delete_confirm', { title }))) return;
     try {
       await api.deletePrivatePage(pageId);
-      showToast('Seite gelöscht', 'success');
+      showToast(t('private.deleted_toast'), 'success');
       setPages(prev => prev.filter(p => p.id !== pageId));
     } catch (err: any) {
       showToast(err.message || 'Fehler', 'error');
@@ -121,22 +123,22 @@ export default function PrivateSpacePage() {
       <div className="page-header">
         <div>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Lock size={28} /> Mein Bereich
+            <Lock size={28} /> {t('private.title')}
           </h1>
-          <p className="page-subtitle">Persönliche Entwürfe und Notizen – nur für dich sichtbar</p>
+          <p className="page-subtitle">{t('private.subtitle')}</p>
         </div>
         <button className="btn btn-primary" onClick={() => navigate('/pages/new?private=1')}>
-          <Plus size={16} /> Neuer Entwurf
+          <Plus size={16} /> {t('private.new_draft')}
         </button>
       </div>
 
       {/* Entwürfe */}
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem' }}>
-          <Edit3 size={18} /> Entwürfe ({drafts.length})
+          <Edit3 size={18} /> {t('private.section_drafts', { count: drafts.length })}
         </h3>
         {drafts.length === 0 ? (
-          <p style={{ color: 'var(--color-text-secondary)' }}>Keine Entwürfe vorhanden. Erstelle einen neuen, um loszulegen.</p>
+          <p style={{ color: 'var(--color-text-secondary)' }}>{t('private.empty_drafts')}</p>
         ) : (
           drafts.map(page => (
             <div key={page.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0', borderBottom: '1px solid var(--color-border)' }}>
@@ -146,30 +148,30 @@ export default function PrivateSpacePage() {
                 </Link>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>
                   {page.workflow_status === 'changes_requested' && (
-                    <span style={{ color: '#ef4444', fontWeight: 500 }}>Änderungen angefragt · </span>
+                    <span style={{ color: '#ef4444', fontWeight: 500 }}>{t('private.changes_requested')} </span>
                   )}
-                  Zuletzt geändert: {new Date(page.updated_at || '').toLocaleDateString('de-DE')}
+                  {t('private.last_modified')}{new Date(page.updated_at || '').toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US')}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   className="btn btn-sm btn-secondary"
                   onClick={() => navigate(`/pages/${page.id}/edit`)}
-                  title="Bearbeiten"
+                  title={t('private.edit_title')}
                 >
                   <Edit3 size={14} />
                 </button>
                 <button
                   className="btn btn-sm btn-primary"
                   onClick={() => openPublishDialog(page.id)}
-                  title="Zur Veröffentlichung einreichen"
+                  title={t('private.publish_title')}
                 >
                   <Send size={14} />
                 </button>
                 <button
                   className="btn btn-sm btn-danger"
                   onClick={() => handleDelete(page.id, page.title)}
-                  title="Löschen"
+                  title={t('private.delete_title')}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -183,7 +185,7 @@ export default function PrivateSpacePage() {
       {inReview.length > 0 && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem' }}>
-            <Clock size={18} /> In Prüfung ({inReview.length})
+            <Clock size={18} /> {t('private.section_pending', { count: inReview.length })}
           </h3>
           {inReview.map(page => (
             <div key={page.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0', borderBottom: '1px solid var(--color-border)' }}>
@@ -191,7 +193,7 @@ export default function PrivateSpacePage() {
                 <FileText size={14} /> {page.title}
               </Link>
               <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 500 }}>
-                Warte auf Prüfung
+                {t('private.pending_status')}
               </span>
             </div>
           ))}
@@ -202,7 +204,7 @@ export default function PrivateSpacePage() {
       {published.length > 0 && (
         <div className="card">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem' }}>
-            <FileText size={18} /> Veröffentlicht ({published.length})
+            <FileText size={18} /> {t('private.section_published', { count: published.length })}
           </h3>
           {published.map(page => (
             <div key={page.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0', borderBottom: '1px solid var(--color-border)' }}>
@@ -220,10 +222,10 @@ export default function PrivateSpacePage() {
       {pages.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
           <Lock size={48} style={{ opacity: 0.3, marginBottom: '1rem' }} />
-          <h3>Dein privater Bereich</h3>
-          <p style={{ color: 'var(--color-text-secondary)' }}>Hier kannst du Entwürfe erstellen und später zur Veröffentlichung einreichen.</p>
+          <h3>{t('private.empty_heading')}</h3>
+          <p style={{ color: 'var(--color-text-secondary)' }}>{t('private.empty_desc')}</p>
           <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={() => navigate('/pages/new?private=1')}>
-            <Plus size={16} /> Ersten Entwurf erstellen
+            <Plus size={16} /> {t('private.empty_action')}
           </button>
         </div>
       )}
@@ -232,32 +234,32 @@ export default function PrivateSpacePage() {
       {showPublishDialog && (
         <div className="modal-overlay" onClick={() => setShowPublishDialog(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <h2>Veröffentlichung beantragen</h2>
+            <h2>{t('private.publish_heading')}</h2>
             <form onSubmit={handlePublish}>
               <div className="form-group">
-                <label>Ziel-Bereich *</label>
+                <label>{t('private.label_space')}</label>
                 <select value={targetSpaceId} onChange={e => handleSpaceChange(parseInt(e.target.value))} required>
-                  <option value={0}>Bereich auswählen…</option>
+                  <option value={0}>{t('private.space_placeholder')}</option>
                   {spaces.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
               {folders.length > 0 && (
                 <div className="form-group">
-                  <label>Ordner (optional)</label>
+                  <label>{t('private.label_folder')}</label>
                   <select value={targetFolderId || ''} onChange={e => setTargetFolderId(e.target.value ? parseInt(e.target.value) : undefined)}>
-                    <option value="">Kein Ordner</option>
+                    <option value="">{t('private.folder_none')}</option>
                     {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                 </div>
               )}
               <div className="form-group">
-                <label>Notiz (optional)</label>
-                <textarea value={publishNote} onChange={e => setPublishNote(e.target.value)} rows={3} placeholder="Anmerkungen für die Prüfer…" />
+                <label>{t('private.label_note')}</label>
+                <textarea value={publishNote} onChange={e => setPublishNote(e.target.value)} rows={3} placeholder={t('private.note_placeholder')} />
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowPublishDialog(false)}>Abbrechen</button>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowPublishDialog(false)}>{t('common.cancel')}</button>
                 <button type="submit" className="btn btn-primary" disabled={!targetSpaceId}>
-                  <Send size={16} /> Einreichen
+                  <Send size={16} /> {t('common.submit')}
                 </button>
               </div>
             </form>

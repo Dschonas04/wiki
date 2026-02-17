@@ -25,6 +25,9 @@ import { api } from '../api/client';
 // Toast-Benachrichtigungen für Erfolgs-/Fehlermeldungen
 import { useToast } from '../context/ToastContext';
 
+// Internationalisierung
+import { useLanguage } from '../context/LanguageContext';
+
 /**
  * Schnittstelle für die ImportDialog-Eigenschaften
  */
@@ -46,6 +49,8 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
   const fileRef = useRef<HTMLInputElement>(null);
   // Toast-Benachrichtigungsfunktion
   const { showToast } = useToast();
+  // Übersetzungsfunktion
+  const { t } = useLanguage();
 
   // Dateien aus dem Eingabefeld übernehmen und Ergebnisse zurücksetzen
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,7 +109,7 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
     // Erfolgsmeldung anzeigen, wenn mindestens eine Datei importiert wurde
     const success = newResults.filter((r) => r.ok).length;
     if (success > 0) {
-      showToast(`${success} Seite${success > 1 ? 'n' : ''} importiert!`, 'success');
+      showToast(t('import.success', { count: success }), 'success');
       onImported();
     }
   };
@@ -128,7 +133,7 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
         {/* Dialog-Kopfbereich mit Titel und Schließen-Button */}
         <div className="modal-header">
           <h3>
-            <Upload size={18} /> Seiten importieren
+            <Upload size={18} /> {t('import.title')}
           </h3>
           <button className="icon-btn" onClick={onClose}>
             <X size={18} />
@@ -138,8 +143,7 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
         <div className="modal-body">
           {/* Erklärungstext für unterstützte Dateiformate */}
           <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: 16 }}>
-            Importiere Markdown (.md), HTML (.html) oder Textdateien (.txt) als Wiki-Seiten.
-            Der Dateiname wird als Seitentitel verwendet.
+            {t('import.desc')}
           </p>
 
           {/* Drag-and-Drop-Bereich für die Dateiauswahl */}
@@ -161,7 +165,7 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
             }}
           >
             <Upload size={32} />
-            <span>Klicken oder Dateien hierher ziehen</span>
+            <span>{t('import.drop')}</span>
             <span className="text-muted" style={{ fontSize: '0.78rem' }}>
               .md, .html, .txt
             </span>
@@ -202,7 +206,7 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
         {/* Dialog-Fußbereich mit Schließen- und Import-Button */}
         <div className="modal-footer">
           <button className="btn btn-secondary" onClick={onClose}>
-            Schließen
+            {t('common.close')}
           </button>
           <button
             className="btn btn-primary"
@@ -212,8 +216,8 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
             <Upload size={16} />
             {/* Dynamischer Buttontext: Zeigt "Importing…" während des Imports */}
             {importing
-              ? 'Importiere…'
-              : `${files.length} Datei${files.length !== 1 ? 'en' : ''} importieren`}
+              ? t('import.importing')
+              : t('import.btn', { count: files.length })}
           </button>
         </div>
       </div>

@@ -27,6 +27,7 @@ import {
 
 // Authentifizierungs-Kontext für Benutzerinformationen und Berechtigungen
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 // API-Client und Typdefinitionen
 import { api, type WikiPage, type HealthData } from '../api/client';
 // Wiederverwendbare Seitenkopf-Komponente
@@ -35,6 +36,7 @@ import PageHeader from '../components/PageHeader';
 export default function Home() {
   // Benutzer, Berechtigungen und Admin-Status aus dem Auth-Kontext holen
   const { user, hasPermission, isAdmin } = useAuth();
+  const { t, language } = useLanguage();
 
   // Zustand für die zuletzt bearbeiteten Seiten
   const [recentPages, setRecentPages] = useState<WikiPage[]>([]);
@@ -51,7 +53,7 @@ export default function Home() {
 
   // Hilfsfunktion: Datum im deutschen Format formatieren
   const formatDate = (s: string) =>
-    new Date(s).toLocaleDateString('de-DE', {
+    new Date(s).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -61,29 +63,28 @@ export default function Home() {
   return (
     <>
       {/* Seitenkopf mit Titel und Untertitel */}
-      <PageHeader title="Willkommen bei Nexora" subtitle="Dein modernes Wissensmanagement-System" />
+      <PageHeader title={t('home.title')} subtitle={t('home.subtitle')} />
 
       <div className="content-body">
         {/* Heldenkarte – Begrüßung und Hauptaktionen */}
         <div className="hero-card">
           <div className="hero-card-content">
             {/* Persönliche Begrüßung mit Anzeigename oder Benutzername */}
-            <h2>Hallo, {user?.displayName || user?.username}!</h2>
+            <h2>{t('home.greeting', { name: user?.displayName || user?.username || '' })}</h2>
             <p>
-              Erstelle, organisiere und teile Wissen mit deinem Team.
-              Nexora bietet Markdown-Bearbeitung, Volltextsuche, Versionierung und rollenbasierte Zugriffskontrolle.
+              {t('home.description')}
             </p>
             <div className="hero-actions">
               {/* Schaltfläche "Seite erstellen" nur anzeigen, wenn Berechtigung vorhanden */}
               {hasPermission('pages.create') && (
                 <Link to="/pages/new" className="btn btn-white">
                   <PlusCircle size={18} />
-                  <span>Seite erstellen</span>
+                  <span>{t('home.create_page')}</span>
                 </Link>
               )}
               {/* Link zum Durchsuchen aller Seiten */}
               <Link to="/pages" className="btn btn-ghost-white">
-                <span>Alle Seiten</span>
+                <span>{t('home.all_pages')}</span>
                 <ArrowRight size={16} />
               </Link>
             </div>
@@ -102,7 +103,7 @@ export default function Home() {
               <div className="stat-icon blue"><FileText size={20} /></div>
               <div className="stat-info">
                 <div className="stat-number">{stats.counts?.pages ?? 0}</div>
-                <div className="stat-label">Seiten</div>
+                <div className="stat-label">{t('home.stat_pages')}</div>
               </div>
             </div>
             {/* Anzahl der registrierten Benutzer */}
@@ -110,7 +111,7 @@ export default function Home() {
               <div className="stat-icon purple"><Users size={20} /></div>
               <div className="stat-info">
                 <div className="stat-number">{stats.counts?.users ?? 0}</div>
-                <div className="stat-label">Benutzer</div>
+                <div className="stat-label">{t('home.stat_users')}</div>
               </div>
             </div>
             {/* Server-Uptime in Stunden */}
@@ -118,7 +119,7 @@ export default function Home() {
               <div className="stat-icon green"><Activity size={20} /></div>
               <div className="stat-info">
                 <div className="stat-number">{Math.floor((stats.uptime || 0) / 3600)}h</div>
-                <div className="stat-label">Betriebszeit</div>
+                <div className="stat-label">{t('home.stat_uptime')}</div>
               </div>
             </div>
             {/* Systemstatus: gesund oder fehlerhaft */}
@@ -126,7 +127,7 @@ export default function Home() {
               <div className="stat-icon orange"><TrendingUp size={20} /></div>
               <div className="stat-info">
                 <div className="stat-number">{stats.status === 'healthy' ? '✓' : '✗'}</div>
-                <div className="stat-label">System</div>
+                <div className="stat-label">{t('home.stat_system')}</div>
               </div>
             </div>
           </div>
@@ -134,15 +135,15 @@ export default function Home() {
 
         {/* Bereich: Zuletzt bearbeitete Seiten */}
         <div className="section-title">
-          <Clock size={18} /> Zuletzt bearbeitet
+          <Clock size={18} /> {t('home.recent_title')}
         </div>
         {/* Ladezustand anzeigen */}
         {loadingRecent ? (
-          <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--c-text-muted)' }}>Laden…</div>
+          <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--c-text-muted)' }}>{t('home.recent_loading')}</div>
         ) : recentPages.length === 0 ? (
           /* Hinweis, wenn noch keine Seiten vorhanden sind */
           <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--c-text-muted)' }}>
-            Noch keine Seiten – erstelle deine erste Seite!
+            {t('home.recent_empty')}
           </div>
         ) : (
           /* Liste der zuletzt bearbeiteten Seiten mit Titel, Autor und Datum */
@@ -163,7 +164,7 @@ export default function Home() {
         )}
 
         {/* Bereich: Schnellzugriff-Aktionen */}
-        <div className="section-title">Schnellzugriff</div>
+        <div className="section-title">{t('home.quick_access')}</div>
         <div className="action-grid">
           {/* Alle Seiten durchsuchen */}
           <Link to="/pages" className="action-card">
@@ -171,8 +172,8 @@ export default function Home() {
               <FileText size={22} />
             </div>
             <div className="action-card-text">
-              <h3>Alle Seiten</h3>
-              <p>Wiki-Seiten durchsuchen und verwalten</p>
+              <h3>{t('home.action_pages')}</h3>
+              <p>{t('home.action_pages_desc')}</p>
             </div>
             <ArrowRight size={16} className="action-arrow" />
           </Link>
@@ -182,8 +183,8 @@ export default function Home() {
               <Layers size={22} />
             </div>
             <div className="action-card-text">
-              <h3>Team-Bereiche</h3>
-              <p>Bereiche und Ordner verwalten</p>
+              <h3>{t('home.action_spaces')}</h3>
+              <p>{t('home.action_spaces_desc')}</p>
             </div>
             <ArrowRight size={16} className="action-arrow" />
           </Link>
@@ -193,8 +194,8 @@ export default function Home() {
               <Lock size={22} />
             </div>
             <div className="action-card-text">
-              <h3>Mein Bereich</h3>
-              <p>Persönliche Entwürfe verwalten</p>
+              <h3>{t('home.action_private')}</h3>
+              <p>{t('home.action_private_desc')}</p>
             </div>
             <ArrowRight size={16} className="action-arrow" />
           </Link>
@@ -205,8 +206,8 @@ export default function Home() {
                 <PlusCircle size={22} />
               </div>
               <div className="action-card-text">
-                <h3>Neue Seite</h3>
-                <p>Neue Wiki-Seite erstellen</p>
+                <h3>{t('home.action_new_page')}</h3>
+                <p>{t('home.action_new_page_desc')}</p>
               </div>
               <ArrowRight size={16} className="action-arrow" />
             </Link>
@@ -220,8 +221,8 @@ export default function Home() {
                   <Users size={22} />
                 </div>
                 <div className="action-card-text">
-                <h3>Benutzerverwaltung</h3>
-                <p>Benutzerkonten verwalten</p>
+                <h3>{t('home.action_users')}</h3>
+                <p>{t('home.action_users_desc')}</p>
                 </div>
                 <ArrowRight size={16} className="action-arrow" />
               </Link>
@@ -231,8 +232,8 @@ export default function Home() {
                   <ScrollText size={22} />
                 </div>
                 <div className="action-card-text">
-                  <h3>Audit-Protokoll</h3>
-                  <p>Systemereignisse prüfen</p>
+                  <h3>{t('home.action_audit')}</h3>
+                  <p>{t('home.action_audit_desc')}</p>
                 </div>
                 <ArrowRight size={16} className="action-arrow" />
               </Link>
