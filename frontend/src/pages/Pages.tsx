@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User, Download, ChevronRight, Upload } from 'lucide-react';
-import { api, type WikiPage } from '../api/client';
+import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User, Download, ChevronRight, Upload, Tag as TagIcon, X } from 'lucide-react';
+import { api, type WikiPage, type Tag } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import PageHeader from '../components/PageHeader';
@@ -17,16 +17,23 @@ export default function Pages() {
   const [search, setSearch] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; title: string } | null>(null);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [activeTagId, setActiveTagId] = useState<number | null>(null);
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
   const canCreate = hasPermission('pages.create');
   const canEdit = hasPermission('pages.edit');
   const canDelete = hasPermission('pages.delete');
 
-  const loadPages = async () => {
+  // Load available tags once
+  useEffect(() => {
+    api.getTags().then(setAllTags).catch(() => {});
+  }, []);
+
+  const loadPages = async (tagId?: number | null) => {
     try {
       setLoading(true);
-      const data = await api.getPages();
+      const data = await api.getPages(tagId ?? undefined);
       setPages(data);
     } catch (err: any) {
       setError(err.message);
@@ -40,7 +47,7 @@ export default function Pages() {
     setError('');
 
     if (!q) {
-      loadPages();
+      loadPages(activeTagId);
       return;
     }
 
@@ -48,7 +55,12 @@ export default function Pages() {
       try {
         setLoading(true);
         const data = await api.searchPages(q);
-        setPages(data);
+        // Client-side tag filter when searching + filtering by tag
+        if (activeTagId) {
+          setPages(data.filter((p: any) => p.tags?.some((t: any) => t.id === activeTagId)));
+        } else {
+          setPages(data);
+        }
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -57,7 +69,7 @@ export default function Pages() {
     }, 300);
 
     return () => clearTimeout(handle);
-  }, [search]);
+  }, [search, activeTagId]);
 
   const handleDelete = async (id: number, title: string) => {
     try {
@@ -134,15 +146,37 @@ export default function Pages() {
 
       <div className="content-body">
         {/* Search */}
-        {pages.length > 0 && (
-          <div className="search-bar">
-            <Search size={18} className="search-icon" />
-            <input
-              type="text"
-              placeholder="Search pages…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        <div className="search-bar">
+          <Search size={18} className="search-icon" />
+          <input
+            type="text"
+            placeholder="Search pages…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* Tag Filter */}
+        {allTags.length > 0 && (
+          <div className="tag-filter-bar">
+            <TagIcon size={15} className="tag-filter-icon" />
+            <div className="tag-filter-chips">
+              {allTags.map(tag => (
+                <button
+                  key={tag.id}
+                  className={`tag-chip ${activeTagId === tag.id ? 'active' : ''}`}
+                  style={{
+                    '--tag-color': tag.color,
+                    '--tag-bg': tag.color + '18',
+                  } as React.CSSProperties}
+                  onClick={() => setActiveTagId(activeTagId === tag.id ? null : tag.id)}
+                >
+                  <span className="tag-chip-dot" style={{ background: tag.color }} />
+                  {tag.name}
+                  {activeTagId === tag.id && <X size={12} />}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -211,6 +245,20 @@ export default function Pages() {
                     {page.content.substring(0, 180)}
                     {page.content.length > 180 ? '…' : ''}
                   </p>
+                )}
+                {(page as any).tags?.length > 0 && (
+                  <div className="page-card-tags">
+                    {(page as any).tags.map((t: any) => (
+                      <span
+                        key={t.id}
+                        className="page-card-tag"
+                        style={{ background: t.color + '20', color: t.color, borderColor: t.color + '40' }}
+                        onClick={(e) => { e.preventDefault(); setActiveTagId(activeTagId === t.id ? null : t.id); }}
+                      >
+                        {t.name}
+                      </span>
+                    ))}
+                  </div>
                 )}
                 <div className="page-card-meta">
                   <span>

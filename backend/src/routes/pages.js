@@ -132,16 +132,39 @@ router.get('/pages', authenticate, requirePermission('pages.read'), async (req, 
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   const isAdmin = req.user.role === 'admin';
+  const tagId = req.query.tag ? parseInt(req.query.tag) : null;
   try {
+    const params = isAdmin ? [] : [req.user.id];
+    let tagJoin = '';
+    if (tagId) {
+      const idx = params.length + 1;
+      tagJoin = ` AND EXISTS (SELECT 1 FROM wiki_page_tags pt WHERE pt.page_id = p.id AND pt.tag_id = $${idx})`;
+      params.push(tagId);
+    }
     const result = await pool.query(`
       SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
              (SELECT COUNT(*) FROM wiki_pages c WHERE c.parent_id = p.id AND c.deleted_at IS NULL) AS children_count
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
-      WHERE p.deleted_at IS NULL AND ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $1 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $1))`}
-      ORDER BY p.updated_at DESC`, isAdmin ? [] : [req.user.id]);
-    res.json(result.rows);
+      WHERE p.deleted_at IS NULL AND ${isAdmin ? 'TRUE' : `(p.visibility = 'published' OR p.created_by = $1 OR EXISTS (SELECT 1 FROM wiki_page_shares s WHERE s.page_id = p.id AND s.shared_with_user_id = $1))`}${tagJoin}
+      ORDER BY p.updated_at DESC`, params);
+
+    // Attach tags to each page
+    const pageIds = result.rows.map(p => p.id);
+    let tagMap = {};
+    if (pageIds.length > 0) {
+      const tagsResult = await pool.query(
+        `SELECT pt.page_id, t.id, t.name, t.color FROM wiki_page_tags pt JOIN wiki_tags t ON pt.tag_id = t.id WHERE pt.page_id = ANY($1)`,
+        [pageIds]
+      );
+      for (const row of tagsResult.rows) {
+        if (!tagMap[row.page_id]) tagMap[row.page_id] = [];
+        tagMap[row.page_id].push({ id: row.id, name: row.name, color: row.color });
+      }
+    }
+    const pages = result.rows.map(p => ({ ...p, tags: tagMap[p.id] || [] }));
+    res.json(pages);
   } catch (err) {
     console.error('Error listing pages:', err.message);
     res.status(500).json({ error: 'Failed to retrieve pages' });

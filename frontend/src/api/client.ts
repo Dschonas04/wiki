@@ -232,7 +232,7 @@ export const api = {
     request<{ message: string }>('POST', '/auth/change-password', { currentPassword, newPassword }),
 
   // Pages
-  getPages: () => request<WikiPage[]>('GET', '/pages'),
+  getPages: (tagId?: number) => request<WikiPage[]>('GET', tagId ? `/pages?tag=${tagId}` : '/pages'),
   getRecentPages: (limit = 10) => request<WikiPage[]>('GET', `/pages/recent?limit=${limit}`),
   searchPages: (q: string) => request<WikiPage[]>('GET', `/pages/search?q=${encodeURIComponent(q)}`),
   getPage: (id: number | string) => request<WikiPage>('GET', `/pages/${id}`),

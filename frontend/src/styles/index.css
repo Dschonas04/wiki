@@ -956,6 +956,89 @@ button {
   color: var(--c-text-muted);
 }
 
+/* ===== Tag Filter ===== */
+.tag-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 10px 14px;
+  background: var(--c-card);
+  border: 1px solid var(--c-border-light);
+  border-radius: var(--radius);
+}
+
+.tag-filter-icon {
+  color: var(--c-text-muted);
+  flex-shrink: 0;
+}
+
+.tag-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1.5px solid var(--c-border);
+  border-radius: 20px;
+  background: var(--c-bg);
+  color: var(--c-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tag-chip:hover {
+  border-color: var(--tag-color);
+  background: var(--tag-bg);
+  color: var(--tag-color);
+}
+
+.tag-chip.active {
+  border-color: var(--tag-color);
+  background: var(--tag-bg);
+  color: var(--tag-color);
+  font-weight: 600;
+}
+
+.tag-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ===== Page Card Tags ===== */
+.page-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.page-card-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.page-card-tag:hover {
+  opacity: 0.8;
+}
+
 /* ===== Pages Grid ===== */
 .pages-grid {
   display: grid;
