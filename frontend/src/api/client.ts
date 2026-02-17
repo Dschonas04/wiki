@@ -163,6 +163,25 @@ export interface TrashItem {
   deleted_by_name?: string;
 }
 
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: 'page' | 'tag';
+  visibility?: string;
+  color?: string;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  type: 'parent' | 'tag';
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
 const API_BASE = '/api';
 
 async function request<T>(method: string, path: string, data?: unknown): Promise<T> {
@@ -322,4 +341,11 @@ export const api = {
     request<{ message: string; page: WikiPage }>('POST', `/trash/${id}/restore`),
   permanentDelete: (id: number) =>
     request<{ message: string }>('DELETE', `/trash/${id}`),
+
+  // Settings
+  getTheme: () => request<{ theme: string }>('GET', '/settings/theme'),
+  setTheme: (theme: string) => request<{ theme: string }>('PUT', '/settings/theme', { theme }),
+
+  // Knowledge Graph
+  getGraph: () => request<GraphData>('GET', '/graph'),
 };

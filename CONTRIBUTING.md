@@ -26,7 +26,7 @@ The app runs at **http://localhost:8080**.
 
 ### Backend changes
 
-After editing `backend/server.js`:
+The backend uses a modular architecture. After editing files in `backend/src/`:
 
 ```bash
 docker compose up -d --build wiki
@@ -42,12 +42,13 @@ docker compose up -d --build frontend
 
 ## Project Structure
 
-| Directory    | Contents                                     |
-|-------------|----------------------------------------------|
-| `backend/`  | Express REST API (server.js, Dockerfile)     |
-| `frontend/` | React + Vite + TypeScript SPA                |
-| `config/`   | LDAP seed data and other config              |
-| `docs/`     | Design documentation                         |
+| Directory           | Contents                                     |
+|--------------------|----------------------------------------------|
+| `backend/`         | Express REST API (modular)                   |
+| `backend/src/`     | Config, database, auth, middleware, routes    |
+| `frontend/`        | React + Vite + TypeScript SPA                |
+| `frontend/src/`    | Components, pages, hooks, API client, styles |
+| `config/`          | LDAP seed data and other config              |
 
 ## Guidelines
 
@@ -58,9 +59,9 @@ docker compose up -d --build frontend
 
 ## Code Style
 
-- **Backend**: Plain JavaScript (ES2020+), Express conventions
+- **Backend**: Plain JavaScript (ES2020+), Express conventions, modular routes
 - **Frontend**: TypeScript, React functional components with hooks
-- **CSS**: Custom properties, no CSS framework
+- **CSS**: Custom properties (design tokens), no CSS framework
 
 ## Reporting Bugs
 

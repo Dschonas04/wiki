@@ -23,6 +23,7 @@ const NotFound = lazy(() => import('./pages/NotFound'));
 const SharedWithMe = lazy(() => import('./pages/SharedWithMe'));
 const Trash = lazy(() => import('./pages/Trash'));
 const Approvals = lazy(() => import('./pages/Approvals'));
+const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph'));
 function RequireAuth({ children, permission }: { children: JSX.Element; permission?: string }) {
   const { user, loading, hasPermission } = useAuth();
   if (loading) return <div className="content-body"><Loading /></div>;
@@ -64,6 +65,7 @@ function AppRoutes() {
         <Route path="/favorites" element={<Suspense fallback={<div className="content-body"><Loading /></div>}><Favorites /></Suspense>} />
         <Route path="/shared" element={<Suspense fallback={<div className="content-body"><Loading /></div>}><SharedWithMe /></Suspense>} />
         <Route path="/trash" element={<RequireAuth permission="pages.read"><Suspense fallback={<div className="content-body"><Loading /></div>}><Trash /></Suspense></RequireAuth>} />
+        <Route path="/graph" element={<RequireAuth permission="pages.read"><Suspense fallback={<div className="content-body"><Loading /></div>}><KnowledgeGraph /></Suspense></RequireAuth>} />
         <Route path="/approvals" element={<RequireAuth permission="users.manage"><Suspense fallback={<div className="content-body"><Loading /></div>}><Approvals /></Suspense></RequireAuth>} />
         <Route path="/pages" element={<RequireAuth permission="pages.read"><Suspense fallback={<div className="content-body"><Loading /></div>}><Pages /></Suspense></RequireAuth>} />
         <Route path="/pages/new" element={<RequireAuth permission="pages.create"><Suspense fallback={<div className="content-body"><Loading /></div>}><NewPage /></Suspense></RequireAuth>} />

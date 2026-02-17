@@ -1,19 +1,26 @@
 # Wiki
 
-A self-hosted wiki application with role-based access control (RBAC) and optional LDAP authentication.
+A self-hosted wiki application with role-based access control (RBAC), optional LDAP authentication, multi-theme support, and an interactive knowledge graph.
 
-Built with **React**, **Node.js**, **PostgreSQL**, and **Nginx** — fully containerized with Docker Compose.
+Built with **React 18**, **Node.js 18**, **PostgreSQL 15**, and **Nginx** — fully containerized with Docker Compose.
 
 ## Features
 
 - **Authentication** — JWT sessions with httpOnly cookies, bcrypt password hashing
 - **RBAC** — Three roles: Admin, Editor, Viewer with granular permissions
 - **LDAP** — Optional LDAP/Active Directory integration with group-to-role mapping
+- **Page Management** — Create, edit, version history, restore, search, soft delete / trash
+- **Visibility & Approval** — Draft/published workflow with admin approval system
+- **Tags** — Per-user tag system with color coding
+- **Favorites** — Bookmark pages for quick access
+- **Sharing** — Share pages with specific users (read/edit permissions)
+- **Attachments** — Upload files to pages (25 MB limit, validated MIME types)
+- **Knowledge Graph** — Interactive force-directed visualization of page relationships
+- **Multi-Theme** — 6 themes (Light, Dark, Orange, Midnight, High Contrast, Soft Dark) saved per user
+- **Export** — Individual page or full wiki export as Markdown
 - **Audit Log** — Tracks logins, page edits, user management events
-- **User Management** — Admin panel for creating/editing/deactivating users
-- **Wiki Pages** — Create, edit, delete, search with author tracking
-- **Security** — Helmet, CSRF protection, rate limiting, CSP headers, non-root containers
-- **Responsive UI** — React SPA with sidebar navigation, mobile support
+- **Security** — Helmet, CSRF protection, rate limiting, compression, non-root containers
+- **Responsive UI** — React SPA with sidebar navigation, global search (⌘K), mobile support
 
 ## Architecture
 
@@ -32,7 +39,7 @@ Browser :8080
 |----------|-------------------------|--------------------------------------------|
 | frontend | React + Vite → Nginx    | SPA + reverse proxy to API                 |
 | backend  | Node.js 18 + Express    | REST API, JWT auth, RBAC, LDAP             |
-| db       | PostgreSQL 15           | Users, pages, audit log                    |
+| db       | PostgreSQL 15           | Users, pages, tags, settings, audit log    |
 | ldap     | osixia/openldap 1.5     | Optional external authentication           |
 
 ## Quick Start
@@ -45,23 +52,15 @@ Browser :8080
 ### 1. Clone and configure
 
 ```bash
-git clone <repo-url> wiki && cd wiki
+git clone https://github.com/Dschonas04/wiki.git && cd wiki
 cp .env.example .env
 ```
 
 Edit `.env` and set **strong, unique values**:
 
 ```bash
-# Generate a secure JWT secret:
-openssl rand -base64 32
-
-# Generate a secure DB password:
-openssl rand -base64 24
-```
-
-```env
-DB_PASS=<your-secure-db-password>
-JWT_SECRET=<your-secure-jwt-secret>
+openssl rand -base64 32   # JWT_SECRET
+openssl rand -base64 24   # DB_PASS
 ```
 
 ### 2. Start
@@ -74,7 +73,13 @@ docker compose up -d
 
 Navigate to **http://localhost:8080**
 
-Default login: `admin` / `admin` — **change this password immediately** via the User Management panel.
+On first startup the system creates a default admin account and prints credentials to the container log:
+
+```bash
+docker compose logs wiki | grep Password
+```
+
+**Change the default password immediately** after first login.
 
 ## Project Structure
 
@@ -82,22 +87,52 @@ Default login: `admin` / `admin` — **change this password immediately** via th
 wiki/
 ├── docker-compose.yml
 ├── .env.example
-├── backend/                 # Node.js REST API
+├── backend/                     # Node.js REST API (modular)
 │   ├── Dockerfile
 │   ├── package.json
-│   └── server.js
-├── frontend/                # React SPA (Vite + TypeScript)
+│   ├── server.js                # Entry point
+│   └── src/
+│       ├── config.js            # Environment & constants
+│       ├── database.js          # PostgreSQL pool & migrations
+│       ├── auth/                # LDAP & JWT helpers
+│       │   ├── ldap.js
+│       │   └── jwt.js
+│       ├── middleware/           # Security & authentication
+│       │   ├── security.js
+│       │   └── auth.js
+│       ├── helpers/              # Audit, validators, utilities
+│       │   ├── audit.js
+│       │   ├── validators.js
+│       │   └── utils.js
+│       └── routes/               # API route handlers
+│           ├── auth.js
+│           ├── users.js
+│           ├── pages.js
+│           ├── approvals.js
+│           ├── attachments.js
+│           ├── tags.js
+│           ├── favorites.js
+│           ├── sharing.js
+│           ├── trash.js
+│           ├── health.js
+│           ├── audit.js
+│           ├── settings.js      # Theme settings
+│           └── graph.js         # Knowledge graph data
+├── frontend/                    # React SPA (Vite + TypeScript)
 │   ├── Dockerfile
 │   ├── nginx.conf
 │   └── src/
-│       ├── api/             # API client
-│       ├── components/      # Layout, Loading, PageHeader
-│       ├── context/         # AuthContext, ToastContext
-│       ├── pages/           # Login, Home, Pages, Users, AuditLog, Health
-│       └── styles/          # CSS design system
+│       ├── api/                 # API client
+│       ├── components/          # Layout, Loading, PageHeader
+│       ├── context/             # AuthContext, ToastContext
+│       ├── hooks/               # useTheme (multi-theme)
+│       ├── pages/               # All page components
+│       └── styles/              # CSS design system (6 themes)
 ├── config/
-│   └── ldap/                # LDAP seed data (LDIF)
-└── docs/                    # Design documentation
+│   └── ldap/                    # LDAP seed data (LDIF)
+├── CONTRIBUTING.md
+├── SECURITY.md
+└── LICENSE
 ```
 
 ## RBAC Roles
@@ -110,39 +145,103 @@ wiki/
 | Delete pages    |   ✅  |   ✅   |   ❌   |
 | Manage users    |   ✅  |   ❌   |   ❌   |
 | View audit log  |   ✅  |   ❌   |   ❌   |
-| System health   |   ✅  |   ✅   |   ✅   |
+| System health   |   ✅  |   ❌   |   ❌   |
 
 ## API Endpoints
 
 ### Auth
-| Method | Endpoint          | Auth | Description            |
-|--------|-------------------|------|------------------------|
-| POST   | /api/auth/login   | No   | Login (local or LDAP)  |
-| POST   | /api/auth/logout  | Yes  | Logout                 |
-| GET    | /api/auth/me      | Yes  | Current user info      |
+| Method | Endpoint                  | Auth | Description                |
+|--------|---------------------------|------|----------------------------|
+| POST   | /api/auth/login           | No   | Login (local or LDAP)      |
+| POST   | /api/auth/logout          | Yes  | Logout                     |
+| GET    | /api/auth/me              | Yes  | Current user info          |
+| POST   | /api/auth/change-password | Yes  | Change password            |
 
 ### Pages
-| Method | Endpoint          | Permission    | Description        |
-|--------|-------------------|---------------|--------------------|
-| GET    | /api/pages        | pages.read    | List all pages     |
-| GET    | /api/pages/:id    | pages.read    | Get single page    |
-| POST   | /api/pages        | pages.create  | Create page        |
-| PUT    | /api/pages/:id    | pages.edit    | Update page        |
-| DELETE | /api/pages/:id    | pages.delete  | Delete page        |
+| Method | Endpoint                        | Permission    | Description                 |
+|--------|---------------------------------|---------------|-----------------------------|
+| GET    | /api/pages                      | pages.read    | List all pages              |
+| GET    | /api/pages/recent               | pages.read    | Recent pages (dashboard)    |
+| GET    | /api/pages/search?q=…           | pages.read    | Full-text search            |
+| GET    | /api/pages/export-all           | pages.read    | Export all as Markdown      |
+| GET    | /api/pages/:id                  | pages.read    | Get single page             |
+| POST   | /api/pages                      | pages.create  | Create page                 |
+| PUT    | /api/pages/:id                  | pages.edit    | Update page                 |
+| DELETE | /api/pages/:id                  | pages.delete  | Soft delete (→ trash)       |
+| GET    | /api/pages/:id/versions         | pages.read    | Version history             |
+| POST   | /api/pages/:id/restore          | pages.edit    | Restore version             |
+| PUT    | /api/pages/:id/visibility       | pages.edit    | Publish / unpublish         |
+| GET    | /api/pages/:id/export           | pages.read    | Export single page          |
+| GET    | /api/pages/:id/tags             | pages.read    | Page tags                   |
+| PUT    | /api/pages/:id/tags             | pages.edit    | Set page tags               |
+| GET    | /api/pages/:id/shares           | pages.read    | List shares                 |
+| POST   | /api/pages/:id/shares           | pages.edit    | Share with user             |
+| DELETE | /api/pages/:id/shares/:userId   | pages.edit    | Remove share                |
+| GET    | /api/pages/:id/attachments      | pages.read    | List attachments            |
+| POST   | /api/pages/:id/attachments      | pages.edit    | Upload attachment           |
+| POST   | /api/pages/:id/request-approval | pages.edit    | Request publish approval    |
+| POST   | /api/pages/:id/cancel-approval  | pages.edit    | Cancel approval request     |
+| GET    | /api/pages/:id/approval-status  | pages.read    | Latest approval status      |
+
+### Tags, Favorites, Sharing
+| Method | Endpoint                   | Auth | Description             |
+|--------|----------------------------|------|-------------------------|
+| GET    | /api/tags                  | Yes  | List user's tags        |
+| POST   | /api/tags                  | Yes  | Create tag              |
+| DELETE | /api/tags/:id              | Yes  | Delete tag              |
+| GET    | /api/favorites             | Yes  | List favorites          |
+| POST   | /api/favorites/:pageId     | Yes  | Toggle favorite         |
+| GET    | /api/favorites/:pageId/check | Yes | Check if favorited    |
+| GET    | /api/shared                | Yes  | Pages shared with me    |
+
+### Approvals (Admin)
+| Method | Endpoint                   | Permission     | Description             |
+|--------|----------------------------|----------------|-------------------------|
+| GET    | /api/approvals             | users.manage   | List approval requests  |
+| GET    | /api/approvals/count       | users.manage   | Pending count (badge)   |
+| POST   | /api/approvals/:id/approve | users.manage   | Approve request         |
+| POST   | /api/approvals/:id/reject  | users.manage   | Reject request          |
 
 ### Admin
-| Method | Endpoint          | Permission    | Description        |
-|--------|-------------------|---------------|--------------------|
-| GET    | /api/users        | users.read    | List users         |
-| POST   | /api/users        | users.manage  | Create user        |
-| PUT    | /api/users/:id    | users.manage  | Update user        |
-| DELETE | /api/users/:id    | users.manage  | Delete user        |
-| GET    | /api/audit        | audit.read    | Audit log          |
+| Method | Endpoint               | Permission     | Description        |
+|--------|------------------------|----------------|--------------------|
+| GET    | /api/users             | users.read     | List users         |
+| GET    | /api/users/list        | Yes            | Lightweight list   |
+| POST   | /api/users             | users.manage   | Create user        |
+| PUT    | /api/users/:id         | users.manage   | Update user        |
+| DELETE | /api/users/:id         | users.manage   | Delete user        |
+| GET    | /api/audit             | audit.read     | Audit log          |
 
-### Health
-| Method | Endpoint          | Auth | Description            |
-|--------|-------------------|------|------------------------|
-| GET    | /api/health       | No   | Health check           |
+### Settings & Graph
+| Method | Endpoint               | Auth | Description            |
+|--------|------------------------|------|------------------------|
+| GET    | /api/settings/theme    | Yes  | Get user's theme       |
+| PUT    | /api/settings/theme    | Yes  | Set user's theme       |
+| GET    | /api/graph             | Yes  | Knowledge graph data   |
+
+### Health & Attachments
+| Method | Endpoint                       | Auth | Description            |
+|--------|--------------------------------|------|------------------------|
+| GET    | /api/health                    | No   | Health check           |
+| GET    | /api/health/details            | Yes  | Detailed health info   |
+| GET    | /api/attachments/:id/download  | Yes  | Download attachment    |
+| DELETE | /api/attachments/:id           | Yes  | Delete attachment      |
+| GET    | /api/trash                     | Yes  | List trashed pages     |
+| POST   | /api/trash/:id/restore         | Yes  | Restore from trash     |
+| DELETE | /api/trash/:id                 | Yes  | Permanently delete     |
+
+## Themes
+
+Six built-in themes, stored per user in the database:
+
+| Theme          | Description                                     |
+|----------------|-------------------------------------------------|
+| Light          | Clean white UI (default)                        |
+| Dark           | Standard dark mode                              |
+| Orange         | Warm orange tones on cream background           |
+| Midnight       | Deep dark with purple accents                   |
+| High Contrast  | Black & white, minimal border radius            |
+| Soft Dark      | Gentle dark with blue accents                   |
 
 ## LDAP Integration
 
@@ -208,6 +307,7 @@ docker compose down -v
 | DB_PASS            | **Yes**  | —                               | Database password               |
 | JWT_SECRET         | **Yes**  | —                               | JWT signing secret (≥ 32 chars) |
 | JWT_EXPIRES        | No       | 8h                              | JWT token lifetime              |
+| COOKIE_SECURE      | No       | false                           | Set true behind HTTPS           |
 | LDAP_ENABLED       | No       | false                           | Enable LDAP authentication      |
 | LDAP_URL           | No       | ldap://ldap:389                 | LDAP server URL                 |
 | LDAP_BIND_DN       | No       | cn=admin,dc=wiki,dc=local       | LDAP service account DN         |
@@ -225,6 +325,10 @@ docker compose down -v
 - CSRF protection via `X-Requested-With` header
 - Rate limiting on auth (20/15min), writes (60/15min), general (300/15min)
 - Nginx adds CSP, HSTS, X-Frame-Options, X-Content-Type-Options headers
+
+## Author
+
+**Jonas** — [github.com/Dschonas04](https://github.com/Dschonas04)
 
 ## License
 

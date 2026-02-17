@@ -13,13 +13,14 @@ import {
   LogOut,
   Shield,
   Lock,
-  Moon,
-  Sun,
+  Palette,
   Star,
   Share2,
   Search,
   Trash2,
   CheckSquare,
+  Network,
+  ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../hooks/useTheme';
@@ -30,7 +31,18 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, hasPermission, isAdmin } = useAuth();
-  const { theme, toggleTheme, isDark } = useTheme();
+  const { theme, setTheme, isDark, themes } = useTheme();
+
+  // Theme picker
+  const [themeOpen, setThemeOpen] = useState(false);
+  const themeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (themeRef.current && !themeRef.current.contains(e.target as Node)) setThemeOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Pending approval count for admins
   const [approvalCount, setApprovalCount] = useState(0);
@@ -105,6 +117,7 @@ export default function Layout() {
     { to: '/favorites', icon: Star, label: 'Favorites', end: true, show: true },
     { to: '/shared', icon: Share2, label: 'Shared with me', end: true, show: true },
     { to: '/trash', icon: Trash2, label: 'Trash', end: true, show: hasPermission('pages.read') },
+    { to: '/graph', icon: Network, label: 'Knowledge Graph', end: true, show: hasPermission('pages.read') },
     { to: '/approvals', icon: CheckSquare, label: 'Approvals', end: true, show: isAdmin, badge: approvalCount > 0 ? approvalCount : undefined },
     { to: '/pages/new', icon: PlusCircle, label: 'New Page', end: true, show: hasPermission('pages.create') },
     { to: '/users', icon: Users, label: 'Users', end: true, show: isAdmin },
@@ -231,10 +244,28 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="sidebar-theme-toggle" onClick={toggleTheme} title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-            <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
-          </button>
+          <div className="theme-picker-wrap" ref={themeRef}>
+            {themeOpen && (
+              <div className="theme-picker-dropdown">
+                {themes.map(t => (
+                  <button
+                    key={t.id}
+                    className={`theme-option ${theme === t.id ? 'active' : ''}`}
+                    onClick={() => { setTheme(t.id); setThemeOpen(false); }}
+                  >
+                    <span className="theme-option-icon">{t.icon}</span>
+                    <span>{t.label}</span>
+                    <span className="theme-option-check">✓</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button className="theme-picker-btn" onClick={() => setThemeOpen(!themeOpen)} title="Change Theme">
+              <Palette size={16} />
+              <span>{themes.find(t => t.id === theme)?.label ?? 'Theme'}</span>
+              <ChevronUp size={14} style={{ marginLeft: 'auto', opacity: 0.5, transform: themeOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </button>
+          </div>
           <button className="sidebar-logout" onClick={handleLogout}>
             <LogOut size={16} />
             <span>Sign Out</span>
