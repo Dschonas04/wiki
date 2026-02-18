@@ -199,7 +199,7 @@ jobs:
 
           # Health details
           echo "── Health details ──"
-          $CURL -b "$JAR" -H "X-Requested-With: XMLHttpRequest" "$BASE/health/details" | grep -q postgres
+          $CURL -b "$JAR" -H "X-Requested-With: XMLHttpRequest" "$BASE/health/details" | grep -q connected
           echo "✅ /api/health/details"
 
           echo ""
