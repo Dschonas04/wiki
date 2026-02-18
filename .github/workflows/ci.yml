@@ -144,15 +144,15 @@ jobs:
       - name: Wait for backend health
         run: |
           echo "Waiting for backend to be healthy..."
-          for i in $(seq 1 30); do
-            if docker compose exec -T wiki sh -c 'wget -qO- http://localhost:3000/api/health 2>/dev/null | grep -q healthy'; then
-              echo "✅ Backend healthy after ${i}s"
+          for i in $(seq 1 40); do
+            if curl -sfk https://localhost:8443/api/health 2>/dev/null | grep -q healthy; then
+              echo "✅ Backend healthy after $((i*2))s"
               exit 0
             fi
             sleep 2
           done
           echo "❌ Backend failed to become healthy"
-          docker compose logs wiki --tail 50
+          docker compose logs --tail 80
           exit 1
 
       - name: Smoke test – API endpoints
