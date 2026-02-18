@@ -145,7 +145,7 @@ jobs:
         run: |
           echo "Waiting for backend to be healthy..."
           for i in $(seq 1 30); do
-            if docker compose exec -T wiki wget -qO- http://localhost:3000/api/health 2>/dev/null | grep -q healthy; then
+            if docker compose exec -T wiki sh -c 'wget -qO- http://localhost:3000/api/health 2>/dev/null | grep -q healthy'; then
               echo "✅ Backend healthy after ${i}s"
               exit 0
             fi
@@ -157,47 +157,49 @@ jobs:
 
       - name: Smoke test – API endpoints
         run: |
-          BASE="http://localhost:3000/api"
+          # Route through nginx (port 3000 is not exposed to host)
+          BASE="https://localhost:8443/api"
+          CURL="curl -sfk"
+          JAR="/tmp/nexora-cookies.txt"
 
           # Health check
           echo "── Health ──"
-          curl -sf "$BASE/health" | grep -q healthy
+          $CURL "$BASE/health" | grep -q healthy
           echo "✅ /api/health"
 
-          # Login as admin
+          # Login as admin (save cookie jar)
           echo "── Login ──"
-          COOKIE=$(curl -sf -c - "$BASE/auth/login" \
+          $CURL -c "$JAR" \
             -H "Content-Type: application/json" \
             -H "X-Requested-With: XMLHttpRequest" \
-            -d '{"username":"admin","password":"Admin123!"}' | grep nexora_token | awk '{print $NF}')
+            -d '{"username":"admin","password":"Admin123!"}' \
+            "$BASE/auth/login" > /dev/null
 
-          if [ -z "$COOKIE" ]; then
-            echo "❌ Login failed"
+          if ! grep -q nexora_token "$JAR" 2>/dev/null; then
+            echo "❌ Login failed – no session cookie"
             docker compose logs wiki --tail 30
             exit 1
           fi
           echo "✅ Login successful"
 
-          AUTH="-H 'Cookie: nexora_token=$COOKIE' -H 'X-Requested-With: XMLHttpRequest'"
-
           # Auth me
           echo "── Auth/me ──"
-          eval curl -sf "$BASE/auth/me" $AUTH | grep -q admin
+          $CURL -b "$JAR" -H "X-Requested-With: XMLHttpRequest" "$BASE/auth/me" | grep -q admin
           echo "✅ /api/auth/me"
 
           # Pages (empty)
           echo "── Pages ──"
-          eval curl -sf "$BASE/pages" $AUTH | grep -q items
+          $CURL -b "$JAR" -H "X-Requested-With: XMLHttpRequest" "$BASE/pages" | grep -q items
           echo "✅ /api/pages"
 
           # Tags
           echo "── Tags ──"
-          eval curl -sf "$BASE/tags" $AUTH
+          $CURL -b "$JAR" -H "X-Requested-With: XMLHttpRequest" "$BASE/tags"
           echo "✅ /api/tags"
 
           # Health details
           echo "── Health details ──"
-          eval curl -sf "$BASE/health/details" $AUTH | grep -q postgres
+          $CURL -b "$JAR" -H "X-Requested-With: XMLHttpRequest" "$BASE/health/details" | grep -q postgres
           echo "✅ /api/health/details"
 
           echo ""
