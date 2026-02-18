@@ -32,6 +32,7 @@ const { ldapAuthenticate } = require('../auth/ldap');
 const { auditLog } = require('../helpers/audit');
 const { getIp, formatUser } = require('../helpers/utils');
 const { validatePassword } = require('../helpers/validators');
+const logger = require('../logger');
 
 // ============================================================================
 // POST /auth/login - Benutzer-Anmeldung
@@ -56,13 +57,26 @@ router.post('/auth/login', authLimiter, async (req, res) => {
   // Benutzername bereinigen: Leerzeichen entfernen und in Kleinbuchstaben umwandeln
   const cleanUser = username.trim().toLowerCase();
 
+  // ── Per-Account Lockout: max. 10 Fehlversuche in 15 Minuten ──
+  const MAX_ATTEMPTS = 10;
+  const LOCKOUT_WINDOW_MIN = 15;
+  try {
+    const attemptsResult = await pool.query(
+      `SELECT COUNT(*) FROM login_attempts WHERE username = $1 AND attempted_at > NOW() - INTERVAL '${LOCKOUT_WINDOW_MIN} minutes'`,
+      [cleanUser]
+    );
+    if (parseInt(attemptsResult.rows[0].count) >= MAX_ATTEMPTS) {
+      return res.status(429).json({ error: `Account temporarily locked. Too many failed attempts. Please try again in ${LOCKOUT_WINDOW_MIN} minutes.` });
+    }
+  } catch { /* Tabelle existiert ggf. noch nicht – weiter ohne Lockout */ }
+
   try {
     // LDAP-Authentifizierung versuchen, falls aktiviert
     if (LDAP_ENABLED) {
       try {
         // LDAP-Authentifizierung durchführen
         const ldapUser = await ldapAuthenticate(cleanUser, password);
-        console.log(`LDAP auth OK: ${cleanUser} (${ldapUser.role})`);
+        logger.debug('LDAP auth successful');
 
         // Benutzer in der lokalen Datenbank anlegen oder aktualisieren (Upsert)
         // Bei Konflikt (Benutzername existiert bereits) werden die Daten aktualisiert
@@ -90,7 +104,7 @@ router.post('/auth/login', authLimiter, async (req, res) => {
         return res.json({ user: formatUser(user) });
       } catch (ldapErr) {
         // LDAP fehlgeschlagen - Fallback auf lokale Authentifizierung
-        console.log(`LDAP failed for ${cleanUser}: ${ldapErr.message} → trying local`);
+        logger.debug('LDAP auth failed, trying local');
       }
     }
 
@@ -103,6 +117,7 @@ router.post('/auth/login', authLimiter, async (req, res) => {
 
     // Benutzer nicht gefunden - fehlgeschlagenen Versuch protokollieren
     if (result.rows.length === 0) {
+      await pool.query('INSERT INTO login_attempts (username, ip_address) VALUES ($1, $2)', [cleanUser, getIp(req)]).catch(() => {});
       await auditLog(null, cleanUser, 'login_failed', 'auth', null, { reason: 'not found' }, getIp(req));
       return res.status(401).json({ error: 'Invalid username or password' });
     }
@@ -113,12 +128,16 @@ router.post('/auth/login', authLimiter, async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       // Falsches Passwort - fehlgeschlagenen Versuch protokollieren
+      await pool.query('INSERT INTO login_attempts (username, ip_address) VALUES ($1, $2)', [cleanUser, getIp(req)]).catch(() => {});
       await auditLog(user.id, user.username, 'login_failed', 'auth', null, { reason: 'wrong password' }, getIp(req));
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
     // Letzten Login-Zeitstempel in der Datenbank aktualisieren
     await pool.query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+
+    // Fehlversuche nach erfolgreichem Login zurücksetzen
+    await pool.query('DELETE FROM login_attempts WHERE username = $1', [cleanUser]).catch(() => {});
 
     // JWT-Token erstellen und als HTTP-Cookie setzen
     const token = signToken(user);
@@ -130,7 +149,7 @@ router.post('/auth/login', authLimiter, async (req, res) => {
     // Benutzerdaten und ggf. Passwort-Änderungs-Flag zurückgeben
     res.json({ user: formatUser(user), mustChangePassword: !!user.must_change_password });
   } catch (err) {
-    console.error('Login error:', err.message);
+    logger.error({ err }, 'Login error');
     res.status(500).json({ error: 'Login failed' });
   }
 });
@@ -175,7 +194,7 @@ router.get('/auth/me', authenticate, async (req, res) => {
     // Formatierte Benutzerdaten zurückgeben
     res.json(formatUser(result.rows[0]));
   } catch (err) {
-    console.error('Get me error:', err.message);
+    logger.error({ err }, 'Get me error');
     res.status(500).json({ error: 'Failed to get user info' });
   }
 });
@@ -231,7 +250,7 @@ router.post('/auth/change-password', authenticate, writeLimiter, async (req, res
 
     res.json({ message: 'Password changed successfully.' });
   } catch (err) {
-    console.error('Password change error:', err.message);
+    logger.error({ err }, 'Password change error');
     res.status(500).json({ error: 'Failed to change password.' });
   }
 });

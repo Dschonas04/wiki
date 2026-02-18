@@ -185,7 +185,7 @@ export default function PageView() {
 
   const markdownHtml = page
     ? page.content_type === 'html'
-      ? DOMPurify.sanitize(page.content || '', { ADD_TAGS: ['iframe', 'video', 'audio', 'source', 'style'], ADD_ATTR: ['allow', 'allowfullscreen', 'frameborder', 'scrolling', 'target', 'controls', 'autoplay'] })
+      ? DOMPurify.sanitize(page.content || '', { ADD_TAGS: ['video', 'audio', 'source'], ADD_ATTR: ['controls', 'autoplay', 'target'] })
       : DOMPurify.sanitize(marked.parse(page.content || '') as string)
     : '';
 
@@ -249,12 +249,12 @@ export default function PageView() {
         actions={
           <div className="btn-row">
             {/* Workflow-Status */}
-            {(page as any).workflow_status && (
+            {page.workflow_status && (
               <span className="btn btn-secondary" style={{ cursor: 'default', opacity: 0.85 }}>
-                {(page as any).workflow_status === 'published' ? t('pageview.status_published') :
-                 (page as any).workflow_status === 'draft' ? t('pageview.status_draft') :
-                 (page as any).workflow_status === 'review' ? t('pageview.status_review') :
-                 (page as any).workflow_status}
+                {page.workflow_status === 'published' ? t('pageview.status_published') :
+                 page.workflow_status === 'draft' ? t('pageview.status_draft') :
+                 page.workflow_status === 'review' ? t('pageview.status_review') :
+                 page.workflow_status}
               </span>
             )}
             <button
@@ -302,27 +302,27 @@ export default function PageView() {
 
       <div className="content-body">
         {/* Breadcrumb Navigation */}
-        {((page as any).breadcrumbs?.length > 0 || (page as any).space_name || (page as any).parent_title) && (
+        {(page.breadcrumbs && page.breadcrumbs.length > 0 || page.space_name || page.parent_title) && (
           <nav className="page-breadcrumb-nav">
-            {(page as any).space_name && (
+            {page.space_name && (
               <>
                 <Link to={`/spaces/${page.space_id}`} className="breadcrumb-item breadcrumb-space">
                   <Layers size={14} />
-                  <span>{(page as any).space_name}</span>
+                  <span>{page.space_name}</span>
                 </Link>
                 <ChevronRight size={12} className="breadcrumb-sep" />
               </>
             )}
-            {(page as any).folder_name && (
+            {page.folder_name && (
               <>
                 <span className="breadcrumb-item breadcrumb-folder">
                   <FolderOpen size={14} />
-                  <span>{(page as any).folder_name}</span>
+                  <span>{page.folder_name}</span>
                 </span>
                 <ChevronRight size={12} className="breadcrumb-sep" />
               </>
             )}
-            {(page as any).breadcrumbs?.map((crumb: { id: number; title: string }) => (
+            {page.breadcrumbs?.map((crumb: { id: number; title: string }) => (
               <span key={crumb.id} style={{ display: 'contents' }}>
                 <Link to={`/pages/${crumb.id}`} className="breadcrumb-item breadcrumb-page">
                   <FileText size={13} />
@@ -338,12 +338,12 @@ export default function PageView() {
         )}
 
         {/* Workflow-Status-Anzeige */}
-        {(page as any).workflow_status && (page as any).workflow_status !== 'published' && (
+        {page.workflow_status && page.workflow_status !== 'published' && (
           <div className="draft-banner">
             <span>
-              {(page as any).workflow_status === 'draft' && <>{t('pageview.banner_draft')}</>}
-              {(page as any).workflow_status === 'review' && <>{t('pageview.banner_review')}</>}
-              {!['draft', 'review'].includes((page as any).workflow_status) && <><strong>{t('pageview.status_label')}</strong> {(page as any).workflow_status}</>}
+              {page.workflow_status === 'draft' && <>{t('pageview.banner_draft')}</>}
+              {page.workflow_status === 'review' && <>{t('pageview.banner_review')}</>}
+              {!['draft', 'review'].includes(page.workflow_status) && <><strong>{t('pageview.status_label')}</strong> {page.workflow_status}</>}
             </span>
           </div>
         )}
@@ -422,14 +422,14 @@ export default function PageView() {
         </div>
 
         {/* Unterseiten */}
-        {(page as any).children?.length > 0 && (
+        {page.children && page.children.length > 0 && (
           <div className="child-pages-section">
             <h3 className="child-pages-title">
               <GitBranch size={18} />
-              {t('pageview.child_pages')} <span className="child-pages-count">{(page as any).children.length}</span>
+              {t('pageview.child_pages')} <span className="child-pages-count">{page.children.length}</span>
             </h3>
             <div className="child-pages-grid">
-              {(page as any).children.map((child: { id: number; title: string }) => (
+              {page.children.map((child: { id: number; title: string }) => (
                 <Link key={child.id} to={`/pages/${child.id}`} className="child-page-card">
                   <FileText size={16} className="child-page-icon" />
                   <span className="child-page-title">{child.title}</span>
@@ -521,10 +521,10 @@ export default function PageView() {
             <RefreshCw size={14} />
             <span>{t('pageview.meta_updated')} {formatDateLong(page.updated_at)}</span>
           </div>
-          {(page as any).created_by_name && (
+          {page.created_by_name && (
             <div className="meta-item">
               <User size={14} />
-              <span>{t('pageview.meta_author')} {(page as any).created_by_name}</span>
+              <span>{t('pageview.meta_author')} {page.created_by_name}</span>
             </div>
           )}
         </div>

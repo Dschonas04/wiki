@@ -14,13 +14,11 @@
 
 const { Router } = require('express');
 const { authenticate } = require('../middleware/auth');
+const { writeLimiter } = require('../middleware/security');
 const { getPool } = require('../database');
 const { auditLog } = require('../helpers/audit');
-
-const router = Router();
-
-/**
- * Hilfsfunktion: Slug aus Name generieren.
+const { getIp } = require('../helpers/utils');
+const logger = require('../logger');: Slug aus Name generieren.
  */
 function slugify(name) {
   return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9äöüß-]/g, '').replace(/-+/g, '-');
@@ -69,13 +67,13 @@ router.get('/spaces/:spaceId/folders', authenticate, async (req, res) => {
 
     res.json(rootFolders);
   } catch (err) {
-    console.error('Fehler beim Laden der Ordner:', err);
+    logger.error({ err }, 'Fehler beim Laden der Ordner');
     res.status(500).json({ error: 'Failed to load folders' });
   }
 });
 
 // ===== POST /spaces/:spaceId/folders – Ordner erstellen =====
-router.post('/spaces/:spaceId/folders', authenticate, async (req, res) => {
+router.post('/spaces/:spaceId/folders', authenticate, writeLimiter, async (req, res) => {
   try {
     const { spaceId } = req.params;
     if (!(await canWriteInSpace(req.user.id, spaceId, req.user.global_role))) {
@@ -118,20 +116,23 @@ router.post('/spaces/:spaceId/folders', authenticate, async (req, res) => {
       [spaceId, name.trim(), slug, parentFolderId || null, depth, maxSort.rows[0].next_order, req.user.id]
     );
 
-    await auditLog(req.user.id, req.user.username, 'create_folder', 'folder', result.rows[0].id, null, req);
+    await auditLog(req.user.id, req.user.username, 'create_folder', 'folder', result.rows[0].id, null, getIp(req));
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A folder with this name already exists here' });
-    console.error('Fehler beim Erstellen des Ordners:', err);
+    logger.error({ err }, 'Fehler beim Erstellen des Ordners');
     res.status(500).json({ error: 'Failed to create folder' });
   }
 });
 
 // ===== PUT /folders/:id – Ordner bearbeiten =====
-router.put('/folders/:id', authenticate, async (req, res) => {
+router.put('/folders/:id', authenticate, writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid folder ID' });
+
     const pool = getPool();
-    const folder = await pool.query('SELECT * FROM folders WHERE id = $1', [req.params.id]);
+    const folder = await pool.query('SELECT * FROM folders WHERE id = $1', [id]);
     if (folder.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
 
     const existing = folder.rows[0];
@@ -144,22 +145,25 @@ router.put('/folders/:id', authenticate, async (req, res) => {
 
     const result = await pool.query(
       `UPDATE folders SET name = $1, slug = $2, sort_order = COALESCE($3, sort_order) WHERE id = $4 RETURNING *`,
-      [name.trim(), slugify(name), sortOrder, req.params.id]
+      [name.trim(), slugify(name), sortOrder, id]
     );
 
-    await auditLog(req.user.id, req.user.username, 'update_folder', 'folder', parseInt(req.params.id), null, req);
+    await auditLog(req.user.id, req.user.username, 'update_folder', 'folder', id, null, getIp(req));
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Fehler beim Bearbeiten des Ordners:', err);
+    logger.error({ err }, 'Fehler beim Bearbeiten des Ordners');
     res.status(500).json({ error: 'Failed to update folder' });
   }
 });
 
 // ===== DELETE /folders/:id – Ordner löschen =====
-router.delete('/folders/:id', authenticate, async (req, res) => {
+router.delete('/folders/:id', authenticate, writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid folder ID' });
+
     const pool = getPool();
-    const folder = await pool.query('SELECT * FROM folders WHERE id = $1', [req.params.id]);
+    const folder = await pool.query('SELECT * FROM folders WHERE id = $1', [id]);
     if (folder.rows.length === 0) return res.status(404).json({ error: 'Folder not found' });
 
     const existing = folder.rows[0];
@@ -168,21 +172,21 @@ router.delete('/folders/:id', authenticate, async (req, res) => {
     }
 
     // Prüfe ob Ordner Seiten oder Unterordner enthält
-    const pages = await pool.query('SELECT COUNT(*) FROM wiki_pages WHERE folder_id = $1 AND deleted_at IS NULL', [req.params.id]);
+    const pages = await pool.query('SELECT COUNT(*) FROM wiki_pages WHERE folder_id = $1 AND deleted_at IS NULL', [id]);
     if (parseInt(pages.rows[0].count) > 0) {
       return res.status(409).json({ error: 'Folder is not empty. Move or delete all pages first.' });
     }
 
-    const children = await pool.query('SELECT COUNT(*) FROM folders WHERE parent_folder_id = $1', [req.params.id]);
+    const children = await pool.query('SELECT COUNT(*) FROM folders WHERE parent_folder_id = $1', [id]);
     if (parseInt(children.rows[0].count) > 0) {
       return res.status(409).json({ error: 'Folder has subfolders. Delete subfolders first.' });
     }
 
-    await pool.query('DELETE FROM folders WHERE id = $1', [req.params.id]);
-    await auditLog(req.user.id, req.user.username, 'delete_folder', 'folder', parseInt(req.params.id), null, req);
+    await pool.query('DELETE FROM folders WHERE id = $1', [id]);
+    await auditLog(req.user.id, req.user.username, 'delete_folder', 'folder', id, null, getIp(req));
     res.json({ message: 'Folder deleted' });
   } catch (err) {
-    console.error('Fehler beim Löschen des Ordners:', err);
+    logger.error({ err }, 'Fehler beim Löschen des Ordners');
     res.status(500).json({ error: 'Failed to delete folder' });
   }
 });

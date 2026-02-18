@@ -34,6 +34,7 @@ const router = express.Router();
 const { getPool } = require('../database');
 // Authentifizierungs- und Berechtigungs-Middleware
 const { authenticate, requirePermission } = require('../middleware/auth');
+const logger = require('../logger');
 
 // ============================================================================
 // GET /graph – Graph-Daten für die Wissenslandkarte abrufen
@@ -109,7 +110,7 @@ router.get('/graph', authenticate, requirePermission('pages.read'), async (req, 
     res.json({ nodes, edges });
   } catch (err) {
     // Fehlerbehandlung bei Datenbankfehlern
-    console.error('Error building graph:', err.message);
+    logger.error({ err }, 'Error building graph');
     res.status(500).json({ error: 'Failed to build knowledge graph' });
   }
 });

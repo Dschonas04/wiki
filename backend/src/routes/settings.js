@@ -28,6 +28,7 @@ const router = express.Router();
 const { getPool } = require('../database');
 // Authentifizierungs-Middleware (jeder angemeldete Benutzer hat Zugriff)
 const { authenticate } = require('../middleware/auth');
+const logger = require('../logger');
 // Rate-Limiter für Schreiboperationen zum Schutz vor Missbrauch
 const { writeLimiter } = require('../middleware/security');
 
@@ -58,7 +59,7 @@ router.get('/settings/theme', authenticate, async (req, res) => {
     res.json({ theme });
   } catch (err) {
     // Fehlerbehandlung bei Datenbankfehlern
-    console.error('Error getting theme:', err.message);
+    logger.error({ err }, 'Error getting theme');
     res.status(500).json({ error: 'Failed to get theme' });
   }
 });
@@ -97,7 +98,7 @@ router.put('/settings/theme', authenticate, writeLimiter, async (req, res) => {
     res.json({ theme });
   } catch (err) {
     // Fehlerbehandlung bei Datenbankfehlern
-    console.error('Error setting theme:', err.message);
+    logger.error({ err }, 'Error setting theme');
     res.status(500).json({ error: 'Failed to save theme' });
   }
 });
@@ -118,7 +119,7 @@ router.get('/settings/language', authenticate, async (req, res) => {
     const language = result.rows.length > 0 ? result.rows[0].setting_value : 'de';
     res.json({ language });
   } catch (err) {
-    console.error('Error getting language:', err.message);
+    logger.error({ err }, 'Error getting language');
     res.status(500).json({ error: 'Failed to get language' });
   }
 });
@@ -142,7 +143,7 @@ router.put('/settings/language', authenticate, writeLimiter, async (req, res) =>
     );
     res.json({ language });
   } catch (err) {
-    console.error('Error setting language:', err.message);
+    logger.error({ err }, 'Error setting language');
     res.status(500).json({ error: 'Failed to save language' });
   }
 });

@@ -336,6 +336,18 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       `);
 
       // ===========================================================
+      // ===== 17b. Login-Versuche (Per-Account Lockout) =====
+      // ===========================================================
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS login_attempts (
+          id SERIAL PRIMARY KEY,
+          username VARCHAR(100) NOT NULL,
+          ip_address VARCHAR(45),
+          attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // ===========================================================
       // ===== 18. Seitenvorlagen =====
       // ===========================================================
       await client.query(`
@@ -457,6 +469,7 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(user_id, is_read)');
       await client.query('CREATE INDEX IF NOT EXISTS idx_templates_category ON page_templates(category)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_login_attempts_user ON login_attempts(username, attempted_at)');
       await client.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name_global
         ON wiki_tags(name) WHERE created_by IS NULL

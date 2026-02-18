@@ -15,6 +15,9 @@ const { Router } = require('express');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { getPool } = require('../database');
 const { auditLog } = require('../helpers/audit');
+const { writeLimiter } = require('../middleware/security');
+const { getIp } = require('../helpers/utils');
+const logger = require('../logger');
 
 const router = Router();
 
@@ -31,7 +34,7 @@ router.get('/organizations', authenticate, async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Fehler beim Laden der Organisationen:', err);
+    logger.error({ err }, 'Fehler beim Laden der Organisationen');
     res.status(500).json({ error: 'Failed to load organizations' });
   }
 });
@@ -39,8 +42,11 @@ router.get('/organizations', authenticate, async (req, res) => {
 // ===== GET /organizations/:id – Einzelne Organisation =====
 router.get('/organizations/:id', authenticate, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid organization ID' });
+
     const pool = getPool();
-    const org = await pool.query('SELECT * FROM organizations WHERE id = $1', [req.params.id]);
+    const org = await pool.query('SELECT * FROM organizations WHERE id = $1', [id]);
     if (org.rows.length === 0) return res.status(404).json({ error: 'Organization not found' });
 
     // Team-Bereiche dieser Organisation laden
@@ -53,18 +59,18 @@ router.get('/organizations/:id', authenticate, async (req, res) => {
        LEFT JOIN space_memberships sm ON sm.space_id = ts.id AND sm.user_id = $1
        WHERE ts.organization_id = $2 AND NOT ts.is_archived
        ORDER BY ts.name`,
-      [req.user.id, req.params.id]
+      [req.user.id, id]
     );
 
     res.json({ ...org.rows[0], spaces: spaces.rows });
   } catch (err) {
-    console.error('Fehler beim Laden der Organisation:', err);
+    logger.error({ err }, 'Fehler beim Laden der Organisation');
     res.status(500).json({ error: 'Failed to load organization' });
   }
 });
 
 // ===== POST /organizations – Organisation erstellen (nur Admin) =====
-router.post('/organizations', authenticate, requirePermission('spaces.manage'), async (req, res) => {
+router.post('/organizations', authenticate, requirePermission('spaces.manage'), writeLimiter, async (req, res) => {
   try {
     const { name, description } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
@@ -78,32 +84,35 @@ router.post('/organizations', authenticate, requirePermission('spaces.manage'), 
       [name.trim(), slug, description?.trim() || '', req.user.id]
     );
 
-    await auditLog(req.user.id, req.user.username, 'create_organization', 'organization', result.rows[0].id, null, req);
+    await auditLog(req.user.id, req.user.username, 'create_organization', 'organization', result.rows[0].id, null, getIp(req));
     res.status(201).json(result.rows[0]);
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Organization with this name already exists' });
-    console.error('Fehler beim Erstellen der Organisation:', err);
+    logger.error({ err }, 'Fehler beim Erstellen der Organisation');
     res.status(500).json({ error: 'Failed to create organization' });
   }
 });
 
 // ===== PUT /organizations/:id – Organisation bearbeiten (nur Admin) =====
-router.put('/organizations/:id', authenticate, requirePermission('spaces.manage'), async (req, res) => {
+router.put('/organizations/:id', authenticate, requirePermission('spaces.manage'), writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid organization ID' });
+
     const { name, description } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
 
     const pool = getPool();
     const result = await pool.query(
       `UPDATE organizations SET name = $1, description = $2 WHERE id = $3 RETURNING *`,
-      [name.trim(), description?.trim() || '', req.params.id]
+      [name.trim(), description?.trim() || '', id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Organization not found' });
 
-    await auditLog(req.user.id, req.user.username, 'update_organization', 'organization', parseInt(req.params.id), null, req);
+    await auditLog(req.user.id, req.user.username, 'update_organization', 'organization', id, null, getIp(req));
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Fehler beim Bearbeiten der Organisation:', err);
+    logger.error({ err }, 'Fehler beim Bearbeiten der Organisation');
     res.status(500).json({ error: 'Failed to update organization' });
   }
 });

@@ -29,6 +29,7 @@ const { getPool } = require('../database');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { writeLimiter } = require('../middleware/security');
 const { isValidColor } = require('../helpers/validators');
+const logger = require('../logger');
 
 // ============================================================================
 // GET /tags - Alle Tags auflisten
@@ -53,7 +54,7 @@ router.get('/tags', authenticate, async (req, res) => {
       GROUP BY t.id ORDER BY t.name ASC`, isAdmin ? [] : [req.user.id]);
     res.json(result.rows);
   } catch (err) {
-    console.error('Error listing tags:', err.message);
+    logger.error({ err }, 'Error listing tags');
     res.status(500).json({ error: 'Failed to retrieve tags' });
   }
 });
@@ -94,7 +95,7 @@ router.post('/tags', authenticate, requirePermission('pages.create'), writeLimit
   } catch (err) {
     // Fehlercode 23505 = Unique-Constraint-Verletzung (Tag-Name existiert bereits)
     if (err.code === '23505') return res.status(409).json({ error: 'You already have a tag with this name.' });
-    console.error('Error creating tag:', err.message);
+    logger.error({ err }, 'Error creating tag');
     res.status(500).json({ error: 'Failed to create tag' });
   }
 });
@@ -129,7 +130,7 @@ router.delete('/tags/:id', authenticate, requirePermission('pages.create'), writ
 
     res.json({ message: 'Tag deleted' });
   } catch (err) {
-    console.error('Error deleting tag:', err.message);
+    logger.error({ err }, 'Error deleting tag');
     res.status(500).json({ error: 'Failed to delete tag' });
   }
 });
@@ -160,7 +161,7 @@ router.get('/pages/:id/tags', authenticate, requirePermission('pages.read'), asy
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Error getting page tags:', err.message);
+    logger.error({ err }, 'Error getting page tags');
     res.status(500).json({ error: 'Failed to retrieve page tags' });
   }
 });
@@ -189,17 +190,29 @@ router.put('/pages/:id/tags', authenticate, requirePermission('pages.edit'), wri
   const isAdmin = req.user.global_role === 'admin';
 
   try {
-    // Schritt 1: Alle bestehenden Tag-Verknüpfungen des Benutzers für diese Seite löschen
-    // Admins löschen alle Tags; andere Benutzer nur ihre eigenen
-    await pool.query(
-      `DELETE FROM wiki_page_tags WHERE page_id = $1 AND tag_id IN (
-        SELECT id FROM wiki_tags WHERE ${isAdmin ? 'TRUE' : '(created_by = $2 OR created_by IS NULL)'}
-      )`, isAdmin ? [id] : [id, req.user.id]
-    );
+    // Transaktion für atomare Tag-Aktualisierung
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Schritt 2: Neue Tag-Verknüpfungen erstellen (ON CONFLICT DO NOTHING für Idempotenz)
-    for (const tagId of tagIds) {
-      await pool.query('INSERT INTO wiki_page_tags (page_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, tagId]);
+      // Schritt 1: Alle bestehenden Tag-Verknüpfungen des Benutzers für diese Seite löschen
+      await client.query(
+        `DELETE FROM wiki_page_tags WHERE page_id = $1 AND tag_id IN (
+          SELECT id FROM wiki_tags WHERE ${isAdmin ? 'TRUE' : '(created_by = $2 OR created_by IS NULL)'}
+        )`, isAdmin ? [id] : [id, req.user.id]
+      );
+
+      // Schritt 2: Neue Tag-Verknüpfungen erstellen (ON CONFLICT DO NOTHING für Idempotenz)
+      for (const tagId of tagIds) {
+        await client.query('INSERT INTO wiki_page_tags (page_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, tagId]);
+      }
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
     }
 
     // Aktualisierte Tag-Liste der Seite laden und zurückgeben
@@ -210,7 +223,7 @@ router.put('/pages/:id/tags', authenticate, requirePermission('pages.edit'), wri
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Error setting page tags:', err.message);
+    logger.error({ err }, 'Error setting page tags');
     res.status(500).json({ error: 'Failed to update page tags' });
   }
 });

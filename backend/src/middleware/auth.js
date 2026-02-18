@@ -20,6 +20,7 @@ const { JWT_SECRET, COOKIE_NAME, PERMISSIONS } = require('../config');
 
 // Datenbankverbindung: Pool-Objekt für PostgreSQL-Abfragen
 const { getPool } = require('../database');
+const logger = require('../logger');
 
 /**
  * Authentifizierungs-Middleware
@@ -74,7 +75,7 @@ async function authenticate(req, res, next) {
     next();
   } catch (err) {
     // Token ist abgelaufen oder ungültig → Cookie entfernen und Fehler zurückgeben
-    console.error('Auth middleware error:', err.message);
+    logger.error({ err }, 'Auth middleware error');
     res.clearCookie(COOKIE_NAME);
     return res.status(401).json({ error: 'Session expired. Please log in again.' });
   }

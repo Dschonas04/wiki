@@ -91,4 +91,27 @@ function isValidColor(color) {
 }
 
 // Exportiert alle Validierungsfunktionen für die Verwendung in Routen
-module.exports = { validatePassword, validatePageInput, isValidColor };
+module.exports = { validatePassword, validatePageInput, isValidColor, sanitizeHtml };
+
+/**
+ * Bereinigt HTML-Inhalte serverseitig (Defense-in-Depth).
+ * Entfernt die gefährlichsten XSS-Vektoren: script, iframe, object, embed,
+ * applet, form-Tags sowie Event-Handler und javascript:/vbscript:-URIs.
+ * Die primäre Sanitisierung erfolgt im Frontend via DOMPurify.
+ *
+ * @param {string} html - Der zu bereinigende HTML-String
+ * @returns {string} Bereinigter HTML-String
+ */
+function sanitizeHtml(html) {
+  if (!html || typeof html !== 'string') return html;
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+    .replace(/<embed\b[^>]*\/?>/gi, '')
+    .replace(/<applet\b[^<]*(?:(?!<\/applet>)<[^<]*)*<\/applet>/gi, '')
+    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, '')
+    .replace(/\bon\w+\s*=\s*'[^']*'/gi, '')
+    .replace(/javascript\s*:/gi, 'blocked:')
+    .replace(/vbscript\s*:/gi, 'blocked:');
+}

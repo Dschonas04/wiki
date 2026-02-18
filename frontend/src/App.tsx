@@ -19,6 +19,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import Layout from './components/Layout';
 import Loading from './components/Loading';
 import CookieBanner from './components/CookieBanner';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // ===== Lazy-geladene Seitenkomponenten =====
 const Home = lazy(() => import('./pages/Home'));
@@ -144,15 +145,17 @@ function AppRoutes() {
  */
 export default function App() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <LanguageProvider>
-          <AuthProvider>
-            <AppRoutes />
-            <CookieBanner />
-          </AuthProvider>
-        </LanguageProvider>
-      </ToastProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ToastProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <AppRoutes />
+              <CookieBanner />
+            </AuthProvider>
+          </LanguageProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

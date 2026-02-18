@@ -23,6 +23,8 @@
  */
 
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 
 // Datenbankverbindung importieren
@@ -35,6 +37,10 @@ const { writeLimiter } = require('../middleware/security');
 const { auditLog } = require('../helpers/audit');
 // Hilfsfunktion zum Ermitteln der IP-Adresse des Benutzers
 const { getIp } = require('../helpers/utils');
+const logger = require('../logger');
+
+// Upload-Verzeichnis für Anhang-Bereinigung bei endgültigem Löschen
+const UPLOAD_DIR = path.join(__dirname, '../../uploads');
 
 // ============================================================================
 // GET /trash – Alle Seiten im Papierkorb auflisten
@@ -65,7 +71,7 @@ router.get('/trash', authenticate, requirePermission('pages.read'), async (req, 
     res.json(result.rows);
   } catch (err) {
     // Fehlerbehandlung bei Datenbankfehlern
-    console.error('Error getting trash:', err.message);
+    logger.error({ err }, 'Error getting trash');
     res.status(500).json({ error: 'Failed to retrieve trash' });
   }
 });
@@ -103,7 +109,7 @@ router.post('/trash/:id/restore', authenticate, requirePermission('pages.edit'),
     res.json({ message: 'Page restored', page: result.rows[0] });
   } catch (err) {
     // Fehlerbehandlung bei Datenbankfehlern
-    console.error('Error restoring page:', err.message);
+    logger.error({ err }, 'Error restoring page');
     res.status(500).json({ error: 'Failed to restore page' });
   }
 });
@@ -126,17 +132,21 @@ router.delete('/trash/:id', authenticate, requirePermission('pages.delete'), wri
   // Validierung: Seiten-ID muss eine gültige Zahl sein
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
   try {
+    // Anhänge der Seite laden und Dateien vom Dateisystem entfernen
+    const attachments = await pool.query('SELECT filename FROM wiki_attachments WHERE page_id = $1', [id]);
+    for (const att of attachments.rows) {
+      const filePath = path.join(UPLOAD_DIR, path.basename(att.filename));
+      fs.unlink(filePath, () => {});
+    }
+
     // Seite endgültig aus der Datenbank löschen (nur wenn sie im Papierkorb ist)
     const result = await pool.query('DELETE FROM wiki_pages WHERE id = $1 AND deleted_at IS NOT NULL RETURNING *', [id]);
-    // Prüfen, ob eine Seite tatsächlich gelöscht wurde
     if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found in trash' });
-    // Audit-Log-Eintrag für die endgültige Löschung erstellen
     await auditLog(req.user.id, req.user.username, 'permanent_delete_page', 'page', id, { title: result.rows[0].title }, getIp(req));
-    // Erfolgsmeldung zurückgeben
     res.json({ message: 'Page permanently deleted' });
   } catch (err) {
     // Fehlerbehandlung bei Datenbankfehlern
-    console.error('Error permanently deleting page:', err.message);
+    logger.error({ err }, 'Error permanently deleting page');
     res.status(500).json({ error: 'Failed to permanently delete page' });
   }
 });
@@ -173,7 +183,7 @@ router.delete('/pages/:id', authenticate, requirePermission('pages.delete'), wri
     res.json({ message: 'Page moved to trash', page: result.rows[0] });
   } catch (err) {
     // Fehlerbehandlung bei Datenbankfehlern
-    console.error('Error deleting page:', err.message);
+    logger.error({ err }, 'Error deleting page');
     res.status(500).json({ error: 'Failed to delete page' });
   }
 });

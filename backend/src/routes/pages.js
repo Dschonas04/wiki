@@ -37,7 +37,8 @@ const { authenticate, requirePermission } = require('../middleware/auth');
 const { writeLimiter } = require('../middleware/security');
 const { auditLog } = require('../helpers/audit');
 const { getIp, canAccessPage } = require('../helpers/utils');
-const { validatePageInput } = require('../helpers/validators');
+const { validatePageInput, sanitizeHtml } = require('../helpers/validators');
+const logger = require('../logger');
 
 // ============================================================================
 // GET /pages/recent - Zuletzt aktualisierte Seiten
@@ -71,7 +72,7 @@ router.get('/pages/recent', authenticate, requirePermission('pages.read'), async
       LIMIT $1`, isPrivileged ? [limit] : [limit, req.user.id]);
     res.json(result.rows);
   } catch (err) {
-    console.error('Error getting recent pages:', err.message);
+    logger.error({ err }, 'Error getting recent pages');
     res.status(500).json({ error: 'Failed to retrieve recent pages' });
   }
 });
@@ -107,7 +108,7 @@ router.get('/pages/:id/export', authenticate, requirePermission('pages.read'), a
     res.setHeader('Content-Disposition', `attachment; filename="${page.title.replace(/[^a-z0-9]/gi, '_')}.md"`);
     res.send(md);
   } catch (err) {
-    console.error('Error exporting page:', err.message);
+    logger.error({ err }, 'Error exporting page');
     res.status(500).json({ error: 'Failed to export page' });
   }
 });
@@ -188,7 +189,7 @@ router.get('/pages/export-all', authenticate, requirePermission('pages.read'), a
     res.setHeader('Content-Disposition', `attachment; filename="nexora-export-${new Date().toISOString().split('T')[0]}.md"`);
     res.send(content);
   } catch (err) {
-    console.error('Error exporting all pages:', err.message);
+    logger.error({ err }, 'Error exporting all pages');
     res.status(500).json({ error: 'Failed to export pages' });
   }
 });
@@ -230,7 +231,7 @@ router.get('/pages/search', authenticate, requirePermission('pages.read'), async
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Error searching pages:', err.message);
+    logger.error({ err }, 'Error searching pages');
     res.status(500).json({ error: 'Failed to search pages' });
   }
 });
@@ -245,6 +246,11 @@ router.get('/pages', authenticate, requirePermission('pages.read'), async (req, 
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
   const isPrivileged = req.user.global_role === 'admin' || req.user.global_role === 'auditor';
+
+  // Paginierung: Standardwerte page=1, limit=50, Maximum 200
+  const page = Math.max(parseInt(req.query.page) || 1, 1);
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
+  const offset = (page - 1) * limit;
 
   // Optionale Tag-Filterung: Tag-ID aus dem Query-Parameter lesen
   const tagId = req.query.tag ? parseInt(req.query.tag) : null;
@@ -275,6 +281,20 @@ router.get('/pages', authenticate, requirePermission('pages.read'), async (req, 
     }
 
     // Alle Seiten mit Ersteller/Aktualisierungs-Infos und Anzahl der Unterseiten laden
+    const countResult = await pool.query(`
+      SELECT COUNT(*) FROM wiki_pages p
+      WHERE p.deleted_at IS NULL AND ${isPrivileged ? 'TRUE' : `(
+        (p.workflow_status = 'published' AND p.space_id IS NOT NULL AND EXISTS (SELECT 1 FROM space_memberships sm WHERE sm.space_id = p.space_id AND sm.user_id = $1))
+        OR p.created_by = $1
+        OR p.private_space_id IN (SELECT id FROM private_spaces WHERE user_id = $1)
+      )`}${extraConditions}`, params);
+    const total = parseInt(countResult.rows[0].count);
+
+    // Paginierungs-Parameter zur Query hinzufügen
+    const limitIdx = params.length + 1;
+    const offsetIdx = params.length + 2;
+    params.push(limit, offset);
+
     const result = await pool.query(`
       SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
              (SELECT COUNT(*) FROM wiki_pages c WHERE c.parent_id = p.id AND c.deleted_at IS NULL) AS children_count
@@ -286,7 +306,8 @@ router.get('/pages', authenticate, requirePermission('pages.read'), async (req, 
         OR p.created_by = $1
         OR p.private_space_id IN (SELECT id FROM private_spaces WHERE user_id = $1)
       )`}${extraConditions}
-      ORDER BY p.updated_at DESC`, params);
+      ORDER BY p.updated_at DESC
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}`, params);
 
     // Tags für alle abgerufenen Seiten in einem einzigen Query laden
     const pageIds = result.rows.map(p => p.id);
@@ -304,11 +325,11 @@ router.get('/pages', authenticate, requirePermission('pages.read'), async (req, 
       }
     }
 
-    // Tags den Seiten zuordnen und Ergebnis zurückgeben
+    // Tags den Seiten zuordnen und Ergebnis mit Paginierung zurückgeben
     const pages = result.rows.map(p => ({ ...p, tags: tagMap[p.id] || [] }));
-    res.json(pages);
+    res.json({ items: pages, total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (err) {
-    console.error('Error listing pages:', err.message);
+    logger.error({ err }, 'Error listing pages');
     res.status(500).json({ error: 'Failed to retrieve pages' });
   }
 });
@@ -388,7 +409,7 @@ router.get('/pages/:id', authenticate, requirePermission('pages.read'), async (r
 
     res.json(page);
   } catch (err) {
-    console.error('Error getting page:', err.message);
+    logger.error({ err }, 'Error getting page');
     res.status(500).json({ error: 'Failed to retrieve page' });
   }
 });
@@ -406,13 +427,18 @@ router.post('/pages', authenticate, requirePermission('pages.create'), writeLimi
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
   // Titel und Inhalt aus dem Request-Body extrahieren
-  const { title, content } = req.body;
+  const { title } = req.body;
+  const content = sanitizeHtml(req.body.content);
 
   // Eingabevalidierung für Titel und Inhalt
   const errors = validatePageInput(title, content);
   if (errors.length > 0) return res.status(400).json({ error: errors.join(' '), errors });
 
+  // Transaktion für atomare Seitenerstellung (Seite + Version + Audit)
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Optionale Parameter verarbeiten
     const parentId = req.body.parentId ? parseInt(req.body.parentId) : null;
     const contentType = req.body.contentType === 'html' ? 'html' : 'markdown';
@@ -422,28 +448,36 @@ router.post('/pages', authenticate, requirePermission('pages.create'), writeLimi
     const workflowStatus = spaceId ? 'published' : 'draft';
 
     // Neue Seite in die Datenbank einfügen
-    const result = await pool.query(
+    const result = await client.query(
       `INSERT INTO wiki_pages (title, content, created_by, updated_by, parent_id, content_type, workflow_status, space_id, folder_id, private_space_id)
        VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [title.trim(), content.trim(), req.user.id, parentId, contentType, workflowStatus, spaceId, folderId, privateSpaceId]
     );
 
     // Erste Version (Version 1) in der Versionshistorie anlegen
-    await pool.query(
+    await client.query(
       'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number, content_type) VALUES ($1, $2, $3, $4, $5, $6)',
       [result.rows[0].id, title.trim(), content.trim(), req.user.id, 1, contentType]
     );
 
     // Seitenerstellung im Audit-Log protokollieren
-    await auditLog(req.user.id, req.user.username, 'create_page', 'page', result.rows[0].id, { title: title.trim() }, getIp(req));
+    await client.query(
+      `INSERT INTO audit_log (user_id, username, action, resource_type, resource_id, details, ip_address) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [req.user.id, req.user.username, 'create_page', 'page', result.rows[0].id, JSON.stringify({ title: title.trim() }), getIp(req)]
+    );
+
+    await client.query('COMMIT');
 
     // Erstellte Seite mit Status 201 (Created) zurückgeben
     res.status(201).json(result.rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     // Fehlercode 23505 = Unique-Constraint-Verletzung (Titel existiert bereits)
     if (err.code === '23505') return res.status(409).json({ error: 'A page with this title already exists.' });
-    console.error('Error creating page:', err.message);
+    logger.error({ err }, 'Error creating page');
     res.status(500).json({ error: 'Failed to create page' });
+  } finally {
+    client.release();
   }
 });
 
@@ -464,20 +498,37 @@ router.put('/pages/:id', authenticate, requirePermission('pages.edit'), writeLim
   if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
 
   // Titel und Inhalt aus dem Request-Body extrahieren und validieren
-  const { title, content } = req.body;
+  const { title } = req.body;
+  const content = sanitizeHtml(req.body.content);
   const errors = validatePageInput(title, content);
   if (errors.length > 0) return res.status(400).json({ error: errors.join(' '), errors });
 
+  // Transaktion für atomare Seitenaktualisierung (Version-Backup + Update + Audit)
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Aktuellen Stand der Seite laden
-    const current = await pool.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
-    if (current.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+    const current = await client.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
+    if (current.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Page not found' }); }
+
+    // Per-Page Autorisierung: Prüfen ob User diese Seite bearbeiten darf
+    if (req.user.global_role !== 'admin') {
+      const page = current.rows[0];
+      const isOwn = page.created_by === req.user.id;
+      const isInOwnPrivateSpace = page.private_space_id && (await client.query('SELECT 1 FROM private_spaces WHERE id = $1 AND user_id = $2', [page.private_space_id, req.user.id])).rows.length > 0;
+      const hasSpaceEditRole = page.space_id && (await client.query("SELECT 1 FROM space_memberships WHERE space_id = $1 AND user_id = $2 AND role IN ('owner', 'editor')", [page.space_id, req.user.id])).rows.length > 0;
+      if (!isOwn && !isInOwnPrivateSpace && !hasSpaceEditRole) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'You do not have edit access to this page' });
+      }
+    }
 
     // Nächste Versionsnummer ermitteln
-    const nextVersion = await pool.query('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM wiki_page_versions WHERE page_id = $1', [id]);
+    const nextVersion = await client.query('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM wiki_page_versions WHERE page_id = $1', [id]);
 
     // Aktuellen Stand als neue Version in der Versionshistorie speichern (vor der Änderung)
-    await pool.query(
+    await client.query(
       'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number, content_type) VALUES ($1, $2, $3, $4, $5, $6)',
       [id, current.rows[0].title, current.rows[0].content, req.user.id, parseInt(nextVersion.rows[0].next), current.rows[0].content_type || 'markdown']
     );
@@ -486,28 +537,35 @@ router.put('/pages/:id', authenticate, requirePermission('pages.edit'), writeLim
     const parentId = req.body.parentId !== undefined ? (req.body.parentId ? parseInt(req.body.parentId) : null) : current.rows[0].parent_id;
 
     // Zirkelverweis-Schutz: Eine Seite darf nicht ihre eigene übergeordnete Seite sein
-    if (parentId === id) return res.status(400).json({ error: 'A page cannot be its own parent.' });
+    if (parentId === id) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'A page cannot be its own parent.' }); }
 
     // Inhaltstyp bestimmen (beibehalten, wenn nicht im Request angegeben)
     const contentType = req.body.contentType !== undefined ? (req.body.contentType === 'html' ? 'html' : 'markdown') : (current.rows[0].content_type || 'markdown');
     const folderId = req.body.folderId !== undefined ? (req.body.folderId ? parseInt(req.body.folderId) : null) : current.rows[0].folder_id;
 
     // Seite in der Datenbank aktualisieren
-    const result = await pool.query(
+    const result = await client.query(
       'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3, parent_id = $4, content_type = $5, folder_id = $6 WHERE id = $7 RETURNING *',
       [title.trim(), content.trim(), req.user.id, parentId, contentType, folderId, id]
     );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+    if (result.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Page not found' }); }
 
     // Seitenaktualisierung im Audit-Log protokollieren
-    await auditLog(req.user.id, req.user.username, 'update_page', 'page', id, { title: title.trim() }, getIp(req));
+    await client.query(
+      `INSERT INTO audit_log (user_id, username, action, resource_type, resource_id, details, ip_address) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [req.user.id, req.user.username, 'update_page', 'page', id, JSON.stringify({ title: title.trim() }), getIp(req)]
+    );
 
+    await client.query('COMMIT');
     res.json(result.rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     // Fehlercode 23505 = Unique-Constraint-Verletzung (Titel existiert bereits)
     if (err.code === '23505') return res.status(409).json({ error: 'A page with this title already exists.' });
-    console.error('Error updating page:', err.message);
+    logger.error({ err }, 'Error updating page');
     res.status(500).json({ error: 'Failed to update page' });
+  } finally {
+    client.release();
   }
 });
 
@@ -536,7 +594,7 @@ router.get('/pages/:id/versions', authenticate, requirePermission('pages.read'),
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Error listing versions:', err.message);
+    logger.error({ err }, 'Error listing versions');
     res.status(500).json({ error: 'Failed to retrieve versions' });
   }
 });
@@ -557,35 +615,46 @@ router.post('/pages/:id/restore', authenticate, requirePermission('pages.edit'),
   const { versionId } = req.body;
   if (isNaN(id) || !versionId) return res.status(400).json({ error: 'Invalid page or version ID' });
 
+  // Transaktion für atomare Versionswiederherstellung (Backup + Restore + Audit)
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
     // Gewünschte Version aus der Datenbank laden
-    const version = await pool.query('SELECT * FROM wiki_page_versions WHERE id = $1 AND page_id = $2', [versionId, id]);
-    if (version.rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+    const version = await client.query('SELECT * FROM wiki_page_versions WHERE id = $1 AND page_id = $2', [versionId, id]);
+    if (version.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Version not found' }); }
 
     // Aktuellen Stand der Seite laden
-    const current = await pool.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
-    if (current.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
+    const current = await client.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
+    if (current.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Page not found' }); }
 
     // Aktuellen Stand als neue Version sichern (bevor er überschrieben wird)
-    const nextVersion = await pool.query('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM wiki_page_versions WHERE page_id = $1', [id]);
-    await pool.query(
-      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number) VALUES ($1, $2, $3, $4, $5)',
-      [id, current.rows[0].title, current.rows[0].content, req.user.id, parseInt(nextVersion.rows[0].next)]
+    const nextVersion = await client.query('SELECT COALESCE(MAX(version_number), 0) + 1 AS next FROM wiki_page_versions WHERE page_id = $1', [id]);
+    await client.query(
+      'INSERT INTO wiki_page_versions (page_id, title, content, created_by, version_number, content_type) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, current.rows[0].title, current.rows[0].content, req.user.id, parseInt(nextVersion.rows[0].next), current.rows[0].content_type || 'markdown']
     );
 
-    // Seite mit dem Inhalt der gewählten Version aktualisieren
-    const restored = await pool.query(
-      'UPDATE wiki_pages SET title = $1, content = $2, updated_by = $3 WHERE id = $4 RETURNING *',
-      [version.rows[0].title, version.rows[0].content, req.user.id, id]
+    // Seite mit dem Inhalt der gewählten Version aktualisieren (inkl. content_type)
+    const restored = await client.query(
+      'UPDATE wiki_pages SET title = $1, content = $2, content_type = $3, updated_by = $4 WHERE id = $5 RETURNING *',
+      [version.rows[0].title, version.rows[0].content, version.rows[0].content_type || 'markdown', req.user.id, id]
     );
 
     // Wiederherstellung im Audit-Log protokollieren
-    await auditLog(req.user.id, req.user.username, 'restore_page', 'page', id, { versionId }, getIp(req));
+    await client.query(
+      `INSERT INTO audit_log (user_id, username, action, resource_type, resource_id, details, ip_address) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [req.user.id, req.user.username, 'restore_page', 'page', id, JSON.stringify({ versionId }), getIp(req)]
+    );
 
+    await client.query('COMMIT');
     res.json(restored.rows[0]);
   } catch (err) {
-    console.error('Error restoring page:', err.message);
+    await client.query('ROLLBACK');
+    logger.error({ err }, 'Error restoring page');
     res.status(500).json({ error: 'Failed to restore page' });
+  } finally {
+    client.release();
   }
 });
 
@@ -626,7 +695,7 @@ router.put('/pages/:id/visibility', authenticate, requirePermission('pages.edit'
 
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error changing visibility:', err.message);
+    logger.error({ err }, 'Error changing visibility');
     res.status(500).json({ error: 'Failed to change page visibility' });
   }
 });

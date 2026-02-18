@@ -15,6 +15,8 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../database');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { writeLimiter } = require('../middleware/security');
+const logger = require('../logger');
 
 // ============================================================================
 // GET /templates – Alle Vorlagen abrufen
@@ -31,7 +33,7 @@ router.get('/templates', authenticate, async (req, res) => {
     `);
     res.json(result.rows);
   } catch (err) {
-    console.error('Error getting templates:', err.message);
+    logger.error({ err }, 'Error getting templates');
     res.status(500).json({ error: 'Failed to load templates' });
   }
 });
@@ -51,7 +53,7 @@ router.get('/templates/:id', authenticate, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Template not found' });
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error getting template:', err.message);
+    logger.error({ err }, 'Error getting template');
     res.status(500).json({ error: 'Failed to load template' });
   }
 });
@@ -59,7 +61,7 @@ router.get('/templates/:id', authenticate, async (req, res) => {
 // ============================================================================
 // POST /templates – Neue Vorlage erstellen (nur Admin)
 // ============================================================================
-router.post('/templates', authenticate, requirePermission('admin'), async (req, res) => {
+router.post('/templates', authenticate, requirePermission('templates.manage'), writeLimiter, async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -75,7 +77,7 @@ router.post('/templates', authenticate, requirePermission('admin'), async (req, 
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('Error creating template:', err.message);
+    logger.error({ err }, 'Error creating template');
     res.status(500).json({ error: 'Failed to create template' });
   }
 });
@@ -83,7 +85,7 @@ router.post('/templates', authenticate, requirePermission('admin'), async (req, 
 // ============================================================================
 // PUT /templates/:id – Vorlage bearbeiten (nur Admin)
 // ============================================================================
-router.put('/templates/:id', authenticate, requirePermission('admin'), async (req, res) => {
+router.put('/templates/:id', authenticate, requirePermission('templates.manage'), writeLimiter, async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -111,7 +113,7 @@ router.put('/templates/:id', authenticate, requirePermission('admin'), async (re
 
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error updating template:', err.message);
+    logger.error({ err }, 'Error updating template');
     res.status(500).json({ error: 'Failed to update template' });
   }
 });
@@ -119,7 +121,7 @@ router.put('/templates/:id', authenticate, requirePermission('admin'), async (re
 // ============================================================================
 // DELETE /templates/:id – Vorlage löschen (nur Admin)
 // ============================================================================
-router.delete('/templates/:id', authenticate, requirePermission('admin'), async (req, res) => {
+router.delete('/templates/:id', authenticate, requirePermission('templates.manage'), writeLimiter, async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -131,7 +133,7 @@ router.delete('/templates/:id', authenticate, requirePermission('admin'), async 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Template not found' });
     res.json({ message: 'Template deleted' });
   } catch (err) {
-    console.error('Error deleting template:', err.message);
+    logger.error({ err }, 'Error deleting template');
     res.status(500).json({ error: 'Failed to delete template' });
   }
 });

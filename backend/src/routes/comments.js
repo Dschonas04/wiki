@@ -14,10 +14,10 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../database');
 const { authenticate } = require('../middleware/auth');
+const { writeLimiter } = require('../middleware/security');
 const { auditLog } = require('../helpers/audit');
 const { getIp } = require('../helpers/utils');
-
-// ============================================================================
+const logger = require('../logger');
 // GET /pages/:pageId/comments – Kommentare einer Seite laden
 // ============================================================================
 router.get('/pages/:pageId/comments', authenticate, async (req, res) => {
@@ -40,7 +40,7 @@ router.get('/pages/:pageId/comments', authenticate, async (req, res) => {
 
     res.json(result.rows);
   } catch (err) {
-    console.error('Error getting comments:', err.message);
+    logger.error({ err }, 'Error getting comments');
     res.status(500).json({ error: 'Failed to load comments' });
   }
 });
@@ -48,7 +48,7 @@ router.get('/pages/:pageId/comments', authenticate, async (req, res) => {
 // ============================================================================
 // POST /pages/:pageId/comments – Neuen Kommentar erstellen
 // ============================================================================
-router.post('/pages/:pageId/comments', authenticate, async (req, res) => {
+router.post('/pages/:pageId/comments', authenticate, writeLimiter, async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -58,6 +58,9 @@ router.post('/pages/:pageId/comments', authenticate, async (req, res) => {
   const { content, parentId } = req.body;
   if (!content || !content.trim()) {
     return res.status(400).json({ error: 'Comment content is required' });
+  }
+  if (content.length > 50000) {
+    return res.status(400).json({ error: 'Comment content too long (max 50,000 characters)' });
   }
 
   try {
@@ -92,8 +95,8 @@ router.post('/pages/:pageId/comments', authenticate, async (req, res) => {
         VALUES ($1, 'comment', $2, $3, $4)
       `, [
         pageData.created_by,
-        'Neuer Kommentar',
-        `${req.user.username} hat "${pageData.title}" kommentiert`,
+        'New comment',
+        `${req.user.username} commented on "${pageData.title}"`,
         `/pages/${pageId}`
       ]);
     }
@@ -107,18 +110,18 @@ router.post('/pages/:pageId/comments', authenticate, async (req, res) => {
           VALUES ($1, 'reply', $2, $3, $4)
         `, [
           parentComment.rows[0].user_id,
-          'Antwort auf Kommentar',
-          `${req.user.username} hat auf deinen Kommentar geantwortet`,
+          'Reply to comment',
+          `${req.user.username} replied to your comment`,
           `/pages/${pageId}`
         ]);
       }
     }
 
-    await auditLog(pool, req.user.id, req.user.username, 'comment.create', 'comment', result.rows[0].id, { pageId }, getIp(req));
+    await auditLog(req.user.id, req.user.username, 'comment.create', 'comment', result.rows[0].id, { pageId }, getIp(req));
 
     res.status(201).json(comment.rows[0]);
   } catch (err) {
-    console.error('Error creating comment:', err.message);
+    logger.error({ err }, 'Error creating comment');
     res.status(500).json({ error: 'Failed to create comment' });
   }
 });
@@ -126,7 +129,7 @@ router.post('/pages/:pageId/comments', authenticate, async (req, res) => {
 // ============================================================================
 // PUT /comments/:id – Kommentar bearbeiten
 // ============================================================================
-router.put('/comments/:id', authenticate, async (req, res) => {
+router.put('/comments/:id', authenticate, writeLimiter, async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -136,6 +139,9 @@ router.put('/comments/:id', authenticate, async (req, res) => {
   const { content } = req.body;
   if (!content || !content.trim()) {
     return res.status(400).json({ error: 'Comment content is required' });
+  }
+  if (content.length > 50000) {
+    return res.status(400).json({ error: 'Comment content too long (max 50,000 characters)' });
   }
 
   try {
@@ -155,9 +161,11 @@ router.put('/comments/:id', authenticate, async (req, res) => {
       WHERE c.id = $1
     `, [id]);
 
+    await auditLog(req.user.id, req.user.username, 'comment.update', 'comment', id, { pageId: existing.rows[0].page_id }, getIp(req));
+
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Error updating comment:', err.message);
+    logger.error({ err }, 'Error updating comment');
     res.status(500).json({ error: 'Failed to update comment' });
   }
 });
@@ -165,7 +173,7 @@ router.put('/comments/:id', authenticate, async (req, res) => {
 // ============================================================================
 // DELETE /comments/:id – Kommentar löschen
 // ============================================================================
-router.delete('/comments/:id', authenticate, async (req, res) => {
+router.delete('/comments/:id', authenticate, writeLimiter, async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -182,11 +190,11 @@ router.delete('/comments/:id', authenticate, async (req, res) => {
     }
 
     await pool.query('DELETE FROM page_comments WHERE id = $1', [id]);
-    await auditLog(pool, req.user.id, req.user.username, 'comment.delete', 'comment', id, { pageId: existing.rows[0].page_id }, getIp(req));
+    await auditLog(req.user.id, req.user.username, 'comment.delete', 'comment', id, { pageId: existing.rows[0].page_id }, getIp(req));
 
     res.json({ message: 'Comment deleted' });
   } catch (err) {
-    console.error('Error deleting comment:', err.message);
+    logger.error({ err }, 'Error deleting comment');
     res.status(500).json({ error: 'Failed to delete comment' });
   }
 });

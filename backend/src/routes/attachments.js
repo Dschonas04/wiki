@@ -38,6 +38,7 @@ const { authenticate, requirePermission } = require('../middleware/auth');
 const { writeLimiter } = require('../middleware/security');
 const { auditLog } = require('../helpers/audit');
 const { getIp, canAccessPage } = require('../helpers/utils');
+const logger = require('../logger');
 
 // Upload-Verzeichnis definieren und bei Bedarf erstellen
 const UPLOAD_DIR = path.join(__dirname, '../../uploads');
@@ -137,7 +138,7 @@ router.post('/pages/:id/attachments', authenticate, requirePermission('pages.edi
     } catch (err) {
       // Bei Fehler: Hochgeladene Datei vom Dateisystem entfernen (Aufräumen)
       if (req.file) fs.unlink(req.file.path, () => {});
-      console.error('Error uploading attachment:', err.message);
+      logger.error({ err }, 'Error uploading attachment');
       res.status(500).json({ error: 'Failed to upload attachment' });
     }
   });
@@ -169,7 +170,7 @@ router.get('/pages/:id/attachments', authenticate, requirePermission('pages.read
       ORDER BY a.created_at DESC`, [pageId]);
     res.json(result.rows);
   } catch (err) {
-    console.error('Error listing attachments:', err.message);
+    logger.error({ err }, 'Error listing attachments');
     res.status(500).json({ error: 'Failed to list attachments' });
   }
 });
@@ -196,8 +197,13 @@ router.get('/attachments/:id/download', authenticate, requirePermission('pages.r
 
     const att = result.rows[0];
 
-    // Prüfen, ob die Datei auf dem Dateisystem existiert
-    const filePath = path.join(UPLOAD_DIR, att.filename);
+    // Zugriffsberechtigung auf die zugehörige Seite prüfen
+    if (!(await canAccessPage(att.page_id, req.user))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Path-Traversal-Schutz und Dateiexistenzprüfung
+    const filePath = path.join(UPLOAD_DIR, path.basename(att.filename));
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found on disk' });
 
     // HTTP-Header für den Dateidownload setzen
@@ -208,7 +214,7 @@ router.get('/attachments/:id/download', authenticate, requirePermission('pages.r
     // Datei als Stream an den Client senden
     fs.createReadStream(filePath).pipe(res);
   } catch (err) {
-    console.error('Error downloading attachment:', err.message);
+    logger.error({ err }, 'Error downloading attachment');
     res.status(500).json({ error: 'Failed to download attachment' });
   }
 });
@@ -253,7 +259,7 @@ router.delete('/attachments/:id', authenticate, requirePermission('pages.edit'),
 
     res.json({ message: 'Attachment deleted' });
   } catch (err) {
-    console.error('Error deleting attachment:', err.message);
+    logger.error({ err }, 'Error deleting attachment');
     res.status(500).json({ error: 'Failed to delete attachment' });
   }
 });

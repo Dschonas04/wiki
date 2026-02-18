@@ -15,6 +15,7 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../database');
 const { authenticate } = require('../middleware/auth');
+const logger = require('../logger');
 
 // ============================================================================
 // GET /notifications – Benachrichtigungen laden
@@ -24,7 +25,7 @@ router.get('/notifications', authenticate, async (req, res) => {
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
   const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-  const offset = parseInt(req.query.offset) || 0;
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
 
   try {
     const result = await pool.query(`
@@ -44,7 +45,7 @@ router.get('/notifications', authenticate, async (req, res) => {
       total: parseInt(countResult.rows[0].count),
     });
   } catch (err) {
-    console.error('Error getting notifications:', err.message);
+    logger.error({ err }, 'Error getting notifications');
     res.status(500).json({ error: 'Failed to load notifications' });
   }
 });
@@ -63,7 +64,7 @@ router.get('/notifications/unread', authenticate, async (req, res) => {
     );
     res.json({ count: parseInt(result.rows[0].count) });
   } catch (err) {
-    console.error('Error getting unread count:', err.message);
+    logger.error({ err }, 'Error getting unread count');
     res.status(500).json({ error: 'Failed to get unread count' });
   }
 });
@@ -85,7 +86,7 @@ router.put('/notifications/:id/read', authenticate, async (req, res) => {
     );
     res.json({ message: 'Marked as read' });
   } catch (err) {
-    console.error('Error marking notification read:', err.message);
+    logger.error({ err }, 'Error marking notification read');
     res.status(500).json({ error: 'Failed to update notification' });
   }
 });
@@ -104,7 +105,7 @@ router.put('/notifications/read-all', authenticate, async (req, res) => {
     );
     res.json({ message: 'All marked as read' });
   } catch (err) {
-    console.error('Error marking all read:', err.message);
+    logger.error({ err }, 'Error marking all read');
     res.status(500).json({ error: 'Failed to update notifications' });
   }
 });
@@ -126,7 +127,7 @@ router.delete('/notifications/:id', authenticate, async (req, res) => {
     );
     res.json({ message: 'Notification deleted' });
   } catch (err) {
-    console.error('Error deleting notification:', err.message);
+    logger.error({ err }, 'Error deleting notification');
     res.status(500).json({ error: 'Failed to delete notification' });
   }
 });

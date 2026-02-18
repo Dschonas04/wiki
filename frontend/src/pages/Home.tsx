@@ -154,7 +154,7 @@ export default function Home() {
                 <span className="recent-page-title">{page.title}</span>
                 <span className="recent-page-meta">
                   {/* Name des letzten Bearbeiters anzeigen, falls vorhanden */}
-                  {(page as any).updated_by_name && <span>{(page as any).updated_by_name}</span>}
+                  {page.updated_by_name && <span>{page.updated_by_name}</span>}
                   {/* Formatiertes Datum der letzten Aenderung */}
                   <span>{formatDate(page.updated_at)}</span>
                 </span>

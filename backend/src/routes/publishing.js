@@ -25,10 +25,11 @@
 
 const { Router } = require('express');
 const { authenticate } = require('../middleware/auth');
+const { writeLimiter } = require('../middleware/security');
 const { getPool } = require('../database');
 const { auditLog } = require('../helpers/audit');
-
-const router = Router();
+const { getIp } = require('../helpers/utils');
+const logger = require('../logger');
 
 // ===== Gültige Statusübergänge =====
 const VALID_TRANSITIONS = {
@@ -55,7 +56,7 @@ async function isReviewer(userId, globalRole, spaceId) {
 }
 
 // ===== POST /publishing/request – Veröffentlichungsantrag stellen =====
-router.post('/publishing/request', authenticate, async (req, res) => {
+router.post('/publishing/request', authenticate, writeLimiter, async (req, res) => {
   try {
     const { pageId, targetSpaceId, targetFolderId, comment } = req.body;
     if (!pageId) return res.status(400).json({ error: 'pageId is required' });
@@ -115,11 +116,11 @@ router.post('/publishing/request', authenticate, async (req, res) => {
     );
 
     await auditLog(req.user.id, req.user.username, 'publish_request', 'wiki_page', pageId,
-      { targetSpaceId, targetFolderId, requestId: result.rows[0].id }, req);
+      { targetSpaceId, targetFolderId, requestId: result.rows[0].id }, getIp(req));
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error('Fehler beim Erstellen des Veröffentlichungsantrags:', err);
+    logger.error({ err }, 'Fehler beim Erstellen des Veröffentlichungsantrags');
     res.status(500).json({ error: 'Failed to create publish request' });
   }
 });
@@ -165,7 +166,7 @@ router.get('/publishing/requests', authenticate, async (req, res) => {
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
-    console.error('Fehler beim Laden der Anträge:', err);
+    logger.error({ err }, 'Fehler beim Laden der Anträge');
     res.status(500).json({ error: 'Failed to load publish requests' });
   }
 });
@@ -173,6 +174,9 @@ router.get('/publishing/requests', authenticate, async (req, res) => {
 // ===== GET /publishing/requests/:id – Einzelner Antrag =====
 router.get('/publishing/requests/:id', authenticate, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid request ID' });
+
     const pool = getPool();
     const result = await pool.query(
       `SELECT pr.*,
@@ -189,7 +193,7 @@ router.get('/publishing/requests/:id', authenticate, async (req, res) => {
        LEFT JOIN team_spaces ts ON pr.target_space_id = ts.id
        LEFT JOIN folders f ON pr.target_folder_id = f.id
        WHERE pr.id = $1`,
-      [req.params.id]
+      [id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Publish request not found' });
 
@@ -204,16 +208,19 @@ router.get('/publishing/requests/:id', authenticate, async (req, res) => {
 
     res.json(prData);
   } catch (err) {
-    console.error('Fehler beim Laden des Antrags:', err);
+    logger.error({ err }, 'Fehler beim Laden des Antrags');
     res.status(500).json({ error: 'Failed to load publish request' });
   }
 });
 
 // ===== POST /publishing/requests/:id/approve – Genehmigen =====
-router.post('/publishing/requests/:id/approve', authenticate, async (req, res) => {
+router.post('/publishing/requests/:id/approve', authenticate, writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid request ID' });
+
     const pool = getPool();
-    const pr = await pool.query('SELECT * FROM publish_requests WHERE id = $1', [req.params.id]);
+    const pr = await pool.query('SELECT * FROM publish_requests WHERE id = $1', [id]);
     if (pr.rows.length === 0) return res.status(404).json({ error: 'Publish request not found' });
 
     const prData = pr.rows[0];
@@ -236,7 +243,7 @@ router.post('/publishing/requests/:id/approve', authenticate, async (req, res) =
       // Antrag genehmigen
       await client.query(
         `UPDATE publish_requests SET status = 'approved', reviewed_by = $1, review_comment = $2, reviewed_at = NOW() WHERE id = $3`,
-        [req.user.id, comment?.trim() || null, req.params.id]
+        [req.user.id, comment?.trim() || null, id]
       );
 
       // Seite in den Zielbereich verschieben und veröffentlichen
@@ -260,20 +267,23 @@ router.post('/publishing/requests/:id/approve', authenticate, async (req, res) =
     }
 
     await auditLog(req.user.id, req.user.username, 'publish_approve', 'wiki_page', prData.page_id,
-      { requestId: parseInt(req.params.id), targetSpaceId: prData.target_space_id }, req);
+      { requestId: id, targetSpaceId: prData.target_space_id }, getIp(req));
 
     res.json({ message: 'Publish request approved. Page is now published.' });
   } catch (err) {
-    console.error('Fehler beim Genehmigen:', err);
+    logger.error({ err }, 'Fehler beim Genehmigen');
     res.status(500).json({ error: 'Failed to approve request' });
   }
 });
 
 // ===== POST /publishing/requests/:id/reject – Ablehnen =====
-router.post('/publishing/requests/:id/reject', authenticate, async (req, res) => {
+router.post('/publishing/requests/:id/reject', authenticate, writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid request ID' });
+
     const pool = getPool();
-    const pr = await pool.query('SELECT * FROM publish_requests WHERE id = $1', [req.params.id]);
+    const pr = await pool.query('SELECT * FROM publish_requests WHERE id = $1', [id]);
     if (pr.rows.length === 0) return res.status(404).json({ error: 'Publish request not found' });
 
     const prData = pr.rows[0];
@@ -286,32 +296,46 @@ router.post('/publishing/requests/:id/reject', authenticate, async (req, res) =>
     const { comment } = req.body;
     if (!comment?.trim()) return res.status(400).json({ error: 'A comment is required when rejecting' });
 
-    await pool.query(
-      `UPDATE publish_requests SET status = 'rejected', reviewed_by = $1, review_comment = $2, reviewed_at = NOW() WHERE id = $3`,
-      [req.user.id, comment.trim(), req.params.id]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Seite zurück auf Entwurf setzen
-    await pool.query(
-      `UPDATE wiki_pages SET workflow_status = 'draft', updated_by = $1 WHERE id = $2`,
-      [req.user.id, prData.page_id]
-    );
+      await client.query(
+        `UPDATE publish_requests SET status = 'rejected', reviewed_by = $1, review_comment = $2, reviewed_at = NOW() WHERE id = $3`,
+        [req.user.id, comment.trim(), id]
+      );
+
+      await client.query(
+        `UPDATE wiki_pages SET workflow_status = 'draft', updated_by = $1 WHERE id = $2`,
+        [req.user.id, prData.page_id]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     await auditLog(req.user.id, req.user.username, 'publish_reject', 'wiki_page', prData.page_id,
-      { requestId: parseInt(req.params.id), comment: comment.trim() }, req);
+      { requestId: id, comment: comment.trim() }, getIp(req));
 
     res.json({ message: 'Publish request rejected' });
   } catch (err) {
-    console.error('Fehler beim Ablehnen:', err);
+    logger.error({ err }, 'Fehler beim Ablehnen');
     res.status(500).json({ error: 'Failed to reject request' });
   }
 });
 
 // ===== POST /publishing/requests/:id/request-changes – Änderungen anfordern =====
-router.post('/publishing/requests/:id/request-changes', authenticate, async (req, res) => {
+router.post('/publishing/requests/:id/request-changes', authenticate, writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid request ID' });
+
     const pool = getPool();
-    const pr = await pool.query('SELECT * FROM publish_requests WHERE id = $1', [req.params.id]);
+    const pr = await pool.query('SELECT * FROM publish_requests WHERE id = $1', [id]);
     if (pr.rows.length === 0) return res.status(404).json({ error: 'Publish request not found' });
 
     const prData = pr.rows[0];
@@ -324,32 +348,46 @@ router.post('/publishing/requests/:id/request-changes', authenticate, async (req
     const { comment } = req.body;
     if (!comment?.trim()) return res.status(400).json({ error: 'A comment is required when requesting changes' });
 
-    // Antrag bleibt offen, aber Seite wird auf changes_requested gesetzt
-    await pool.query(
-      `UPDATE publish_requests SET review_comment = $1, reviewed_by = $2 WHERE id = $3`,
-      [comment.trim(), req.user.id, req.params.id]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    await pool.query(
-      `UPDATE wiki_pages SET workflow_status = 'changes_requested', updated_by = $1 WHERE id = $2`,
-      [req.user.id, prData.page_id]
-    );
+      await client.query(
+        `UPDATE publish_requests SET review_comment = $1, reviewed_by = $2 WHERE id = $3`,
+        [comment.trim(), req.user.id, id]
+      );
+
+      await client.query(
+        `UPDATE wiki_pages SET workflow_status = 'changes_requested', updated_by = $1 WHERE id = $2`,
+        [req.user.id, prData.page_id]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     await auditLog(req.user.id, req.user.username, 'publish_changes_requested', 'wiki_page', prData.page_id,
-      { requestId: parseInt(req.params.id), comment: comment.trim() }, req);
+      { requestId: id, comment: comment.trim() }, getIp(req));
 
     res.json({ message: 'Changes requested' });
   } catch (err) {
-    console.error('Fehler beim Anfordern von Änderungen:', err);
+    logger.error({ err }, 'Fehler beim Anfordern von Änderungen');
     res.status(500).json({ error: 'Failed to request changes' });
   }
 });
 
 // ===== POST /publishing/requests/:id/cancel – Antrag zurückziehen =====
-router.post('/publishing/requests/:id/cancel', authenticate, async (req, res) => {
+router.post('/publishing/requests/:id/cancel', authenticate, writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid request ID' });
+
     const pool = getPool();
-    const pr = await pool.query('SELECT * FROM publish_requests WHERE id = $1', [req.params.id]);
+    const pr = await pool.query('SELECT * FROM publish_requests WHERE id = $1', [id]);
     if (pr.rows.length === 0) return res.status(404).json({ error: 'Publish request not found' });
 
     const prData = pr.rows[0];
@@ -360,31 +398,46 @@ router.post('/publishing/requests/:id/cancel', authenticate, async (req, res) =>
       return res.status(403).json({ error: 'Only the requester or an admin can cancel' });
     }
 
-    await pool.query(
-      `UPDATE publish_requests SET status = 'cancelled', reviewed_at = NOW() WHERE id = $1`,
-      [req.params.id]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    await pool.query(
-      `UPDATE wiki_pages SET workflow_status = 'draft', updated_by = $1 WHERE id = $2`,
-      [req.user.id, prData.page_id]
-    );
+      await client.query(
+        `UPDATE publish_requests SET status = 'cancelled', reviewed_at = NOW() WHERE id = $1`,
+        [id]
+      );
+
+      await client.query(
+        `UPDATE wiki_pages SET workflow_status = 'draft', updated_by = $1 WHERE id = $2`,
+        [req.user.id, prData.page_id]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     await auditLog(req.user.id, req.user.username, 'publish_cancel', 'wiki_page', prData.page_id,
-      { requestId: parseInt(req.params.id) }, req);
+      { requestId: id }, getIp(req));
 
     res.json({ message: 'Publish request cancelled' });
   } catch (err) {
-    console.error('Fehler beim Zurückziehen:', err);
+    logger.error({ err }, 'Fehler beim Zurückziehen');
     res.status(500).json({ error: 'Failed to cancel request' });
   }
 });
 
 // ===== POST /publishing/pages/:id/archive – Seite archivieren =====
-router.post('/publishing/pages/:id/archive', authenticate, async (req, res) => {
+router.post('/publishing/pages/:id/archive', authenticate, writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+
     const pool = getPool();
-    const page = await pool.query('SELECT * FROM wiki_pages WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
+    const page = await pool.query('SELECT * FROM wiki_pages WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (page.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
 
     const pageData = page.rows[0];
@@ -407,22 +460,25 @@ router.post('/publishing/pages/:id/archive', authenticate, async (req, res) => {
 
     await pool.query(
       `UPDATE wiki_pages SET workflow_status = 'archived', updated_by = $1 WHERE id = $2`,
-      [req.user.id, req.params.id]
+      [req.user.id, id]
     );
 
-    await auditLog(req.user.id, req.user.username, 'page_archive', 'wiki_page', parseInt(req.params.id), null, req);
+    await auditLog(req.user.id, req.user.username, 'page_archive', 'wiki_page', id, null, getIp(req));
     res.json({ message: 'Page archived' });
   } catch (err) {
-    console.error('Fehler beim Archivieren:', err);
+    logger.error({ err }, 'Fehler beim Archivieren');
     res.status(500).json({ error: 'Failed to archive page' });
   }
 });
 
 // ===== POST /publishing/pages/:id/unpublish – Veröffentlichung zurückziehen =====
-router.post('/publishing/pages/:id/unpublish', authenticate, async (req, res) => {
+router.post('/publishing/pages/:id/unpublish', authenticate, writeLimiter, async (req, res) => {
   try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid page ID' });
+
     const pool = getPool();
-    const page = await pool.query('SELECT * FROM wiki_pages WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
+    const page = await pool.query('SELECT * FROM wiki_pages WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (page.rows.length === 0) return res.status(404).json({ error: 'Page not found' });
 
     if (!['published', 'archived'].includes(page.rows[0].workflow_status)) {
@@ -436,13 +492,13 @@ router.post('/publishing/pages/:id/unpublish', authenticate, async (req, res) =>
 
     await pool.query(
       `UPDATE wiki_pages SET workflow_status = 'draft', space_id = NULL, folder_id = NULL, updated_by = $1 WHERE id = $2`,
-      [req.user.id, req.params.id]
+      [req.user.id, id]
     );
 
-    await auditLog(req.user.id, req.user.username, 'page_unpublish', 'wiki_page', parseInt(req.params.id), null, req);
+    await auditLog(req.user.id, req.user.username, 'page_unpublish', 'wiki_page', id, null, getIp(req));
     res.json({ message: 'Page unpublished and returned to draft' });
   } catch (err) {
-    console.error('Fehler beim Zurückziehen der Veröffentlichung:', err);
+    logger.error({ err }, 'Fehler beim Zurückziehen der Veröffentlichung');
     res.status(500).json({ error: 'Failed to unpublish page' });
   }
 });

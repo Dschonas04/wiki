@@ -16,8 +16,12 @@
 
 const { Router } = require('express');
 const { authenticate } = require('../middleware/auth');
+const { writeLimiter } = require('../middleware/security');
 const { getPool } = require('../database');
 const { auditLog } = require('../helpers/audit');
+const { getIp } = require('../helpers/utils');
+const { sanitizeHtml } = require('../helpers/validators');
+const logger = require('../logger');
 
 const router = Router();
 
@@ -97,7 +101,7 @@ router.get('/private-space', authenticate, async (req, res) => {
       pending_requests: requests.rows,
     });
   } catch (err) {
-    console.error('Fehler beim Laden des privaten Bereichs:', err);
+    logger.error({ err }, 'Fehler beim Laden des privaten Bereichs');
     res.status(500).json({ error: 'Failed to load private space' });
   }
 });
@@ -107,7 +111,8 @@ router.get('/private-space/pages/:id', authenticate, async (req, res) => {
   try {
     const privateSpace = await getOrCreatePrivateSpace(req.user.id);
     const pool = getPool();
-    const pageId = req.params.id;
+    const pageId = parseInt(req.params.id);
+    if (isNaN(pageId)) return res.status(400).json({ error: 'Invalid page ID' });
 
     const page = await pool.query(
       `SELECT wp.*, ps.user_id AS owner_id
@@ -136,18 +141,21 @@ router.get('/private-space/pages/:id', authenticate, async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    console.error('Fehler beim Laden der Seite:', err);
+    logger.error({ err }, 'Fehler beim Laden der Seite');
     res.status(500).json({ error: 'Failed to load page' });
   }
 });
 
 // ===== POST /private-space/pages =====
-router.post('/private-space/pages', authenticate, async (req, res) => {
+router.post('/private-space/pages', authenticate, writeLimiter, async (req, res) => {
   try {
     const privateSpace = await getOrCreatePrivateSpace(req.user.id);
-    const { title, content, contentType, parentId } = req.body;
+    const { title, contentType, parentId } = req.body;
+    const content = sanitizeHtml(req.body.content);
 
     if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
+    if (title.trim().length > 255) return res.status(400).json({ error: 'Title must be 255 characters or less' });
+    if (content && content.length > 100000) return res.status(400).json({ error: 'Content must be 100,000 characters or less' });
 
     const pool = getPool();
 
@@ -160,32 +168,44 @@ router.post('/private-space/pages', authenticate, async (req, res) => {
       if (parent.rows.length === 0) return res.status(400).json({ error: 'Parent page not found in your private space' });
     }
 
-    const result = await pool.query(
-      `INSERT INTO wiki_pages (title, content, content_type, private_space_id, parent_id, workflow_status, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, 'draft', $6, $6) RETURNING *`,
-      [title.trim(), content || '', contentType || 'markdown', privateSpace.id, parentId || null, req.user.id]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Erste Version anlegen
-    await pool.query(
-      `INSERT INTO wiki_page_versions (page_id, title, content, content_type, version_number, created_by)
-       VALUES ($1, $2, $3, $4, 1, $5)`,
-      [result.rows[0].id, title.trim(), content || '', contentType || 'markdown', req.user.id]
-    );
+      const result = await client.query(
+        `INSERT INTO wiki_pages (title, content, content_type, private_space_id, parent_id, workflow_status, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, 'draft', $6, $6) RETURNING *`,
+        [title.trim(), content || '', contentType || 'markdown', privateSpace.id, parentId || null, req.user.id]
+      );
 
-    await auditLog(req.user.id, req.user.username, 'create_page', 'wiki_page', result.rows[0].id, null, req.ip);
-    res.status(201).json(result.rows[0]);
+      await client.query(
+        `INSERT INTO wiki_page_versions (page_id, title, content, content_type, version_number, created_by)
+         VALUES ($1, $2, $3, $4, 1, $5)`,
+        [result.rows[0].id, title.trim(), content || '', contentType || 'markdown', req.user.id]
+      );
+
+      await client.query('COMMIT');
+
+      await auditLog(req.user.id, req.user.username, 'create_page', 'wiki_page', result.rows[0].id, null, getIp(req));
+      res.status(201).json(result.rows[0]);
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
   } catch (err) {
-    console.error('Fehler beim Erstellen der Seite:', err);
+    logger.error({ err }, 'Fehler beim Erstellen der Seite');
     res.status(500).json({ error: 'Failed to create page' });
   }
 });
 
 // ===== PUT /private-space/pages/:id =====
-router.put('/private-space/pages/:id', authenticate, async (req, res) => {
+router.put('/private-space/pages/:id', authenticate, writeLimiter, async (req, res) => {
   try {
     const pool = getPool();
-    const pageId = req.params.id;
+    const pageId = parseInt(req.params.id);
+    if (isNaN(pageId)) return res.status(400).json({ error: 'Invalid page ID' });
 
     const page = await pool.query(
       `SELECT wp.*, ps.user_id AS owner_id
@@ -199,14 +219,15 @@ router.put('/private-space/pages/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'This page does not belong to your private space' });
     }
 
-    // KEINE Workflow-Einschraenkung – im privaten Bereich kann alles bearbeitet werden
-
-    const { title, content, contentType, parentId } = req.body;
+    const { title, contentType, parentId } = req.body;
+    const content = sanitizeHtml(req.body.content);
     if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
+    if (title.trim().length > 255) return res.status(400).json({ error: 'Title must be 255 characters or less' });
+    if (content && content.length > 100000) return res.status(400).json({ error: 'Content must be 100,000 characters or less' });
 
     // Validate parentId if set
     if (parentId) {
-      if (parseInt(parentId) === parseInt(pageId)) {
+      if (parseInt(parentId) === pageId) {
         return res.status(400).json({ error: 'A page cannot be its own parent' });
       }
       const parent = await pool.query(
@@ -216,36 +237,48 @@ router.put('/private-space/pages/:id', authenticate, async (req, res) => {
       if (parent.rows.length === 0) return res.status(400).json({ error: 'Parent page not found' });
     }
 
-    // Version erstellen (alten Stand sichern)
+    // Transaktion: Version sichern + Seite aktualisieren
     const oldPage = page.rows[0];
-    await pool.query(
-      `INSERT INTO wiki_page_versions (page_id, title, content, content_type, version_number, created_by)
-       VALUES ($1, $2, $3, $4,
-         (SELECT COALESCE(MAX(version_number), 0) + 1 FROM wiki_page_versions WHERE page_id = $1),
-         $5)`,
-      [pageId, oldPage.title, oldPage.content, oldPage.content_type, req.user.id]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Seite aktualisieren
-    const result = await pool.query(
-      `UPDATE wiki_pages SET title = $1, content = $2, content_type = $3, parent_id = $4, updated_by = $5
-       WHERE id = $6 RETURNING *`,
-      [title.trim(), content || '', contentType || oldPage.content_type, parentId !== undefined ? (parentId || null) : oldPage.parent_id, req.user.id, pageId]
-    );
+      await client.query(
+        `INSERT INTO wiki_page_versions (page_id, title, content, content_type, version_number, created_by)
+         VALUES ($1, $2, $3, $4,
+           (SELECT COALESCE(MAX(version_number), 0) + 1 FROM wiki_page_versions WHERE page_id = $1),
+           $5)`,
+        [pageId, oldPage.title, oldPage.content, oldPage.content_type, req.user.id]
+      );
 
-    await auditLog(req.user.id, req.user.username, 'update_page', 'wiki_page', parseInt(pageId), null, req.ip);
-    res.json(result.rows[0]);
+      const result = await client.query(
+        `UPDATE wiki_pages SET title = $1, content = $2, content_type = $3, parent_id = $4, updated_by = $5
+         WHERE id = $6 RETURNING *`,
+        [title.trim(), content || '', contentType || oldPage.content_type, parentId !== undefined ? (parentId || null) : oldPage.parent_id, req.user.id, pageId]
+      );
+
+      await client.query('COMMIT');
+
+      await auditLog(req.user.id, req.user.username, 'update_page', 'wiki_page', pageId, null, getIp(req));
+      res.json(result.rows[0]);
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
   } catch (err) {
-    console.error('Fehler beim Bearbeiten der Seite:', err);
+    logger.error({ err }, 'Fehler beim Bearbeiten der Seite');
     res.status(500).json({ error: 'Failed to update page' });
   }
 });
 
 // ===== DELETE /private-space/pages/:id =====
-router.delete('/private-space/pages/:id', authenticate, async (req, res) => {
+router.delete('/private-space/pages/:id', authenticate, writeLimiter, async (req, res) => {
   try {
     const pool = getPool();
-    const pageId = req.params.id;
+    const pageId = parseInt(req.params.id);
+    if (isNaN(pageId)) return res.status(400).json({ error: 'Invalid page ID' });
 
     const page = await pool.query(
       `SELECT wp.*, ps.user_id AS owner_id
@@ -265,12 +298,12 @@ router.delete('/private-space/pages/:id', authenticate, async (req, res) => {
       [pageId]
     );
 
-    // Soft-Delete
-    await pool.query('UPDATE wiki_pages SET deleted_at = NOW() WHERE id = $1', [pageId]);
-    await auditLog(req.user.id, req.user.username, 'delete_page', 'wiki_page', parseInt(pageId), null, req.ip);
+    // Soft-Delete mit deleted_by
+    await pool.query('UPDATE wiki_pages SET deleted_at = NOW(), deleted_by = $1 WHERE id = $2', [req.user.id, pageId]);
+    await auditLog(req.user.id, req.user.username, 'delete_page', 'wiki_page', pageId, null, getIp(req));
     res.json({ message: 'Page deleted' });
   } catch (err) {
-    console.error('Fehler beim Loeschen der Seite:', err);
+    logger.error({ err }, 'Fehler beim Loeschen der Seite');
     res.status(500).json({ error: 'Failed to delete page' });
   }
 });

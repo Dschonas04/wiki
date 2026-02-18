@@ -8,9 +8,11 @@ yarn-debug.log*
 yarn-error.log*
 
 # Backups
+backups/
 *.sql
 backup_*.sql
 *.tar.gz
+*.sql.gz
 
 # OS files
 .DS_Store

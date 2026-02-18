@@ -108,6 +108,8 @@ const PERMISSIONS = {
     'users.read', 'users.manage',
     'health.read',
     'audit.read',
+    'dashboard.read',
+    'templates.manage',
   ],
 
   // Auditoren: Koennen Veroeffentlichungsanfragen pruefen/freigeben,

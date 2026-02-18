@@ -31,8 +31,7 @@ const { writeLimiter } = require('../middleware/security');
 const { auditLog } = require('../helpers/audit');
 const { getIp } = require('../helpers/utils');
 const { validatePassword } = require('../helpers/validators');
-
-// ============================================================================
+const logger = require('../logger');
 // GET /users - Alle Benutzer auflisten (Admin-Ansicht)
 // ============================================================================
 // Gibt eine vollständige Liste aller Benutzer zurück, sortiert nach Erstellungsdatum.
@@ -55,7 +54,7 @@ router.get('/users', authenticate, requirePermission('users.read'), async (req, 
       lastLogin: u.last_login, createdAt: u.created_at,
     })));
   } catch (err) {
-    console.error('Error listing users:', err.message);
+    logger.error({ err }, 'Error listing users');
     res.status(500).json({ error: 'Failed to retrieve users' });
   }
 });
@@ -85,29 +84,39 @@ router.post('/users', authenticate, requirePermission('users.manage'), writeLimi
     // Passwort mit bcrypt hashen
     const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    // Neuen Benutzer in die Datenbank einfügen
-    // Benutzername wird normalisiert (Kleinbuchstaben, ohne Leerzeichen)
-    // Authentifizierungsquelle wird auf 'local' gesetzt
-    const result = await pool.query(
-      `INSERT INTO users (username, password_hash, display_name, email, global_role, auth_source)
-       VALUES ($1, $2, $3, $4, $5, 'local') RETURNING id, username, display_name, email, global_role, auth_source, created_at`,
-      [username.trim().toLowerCase(), hash, displayName || username, email || null, role]
-    );
+    const client = await pool.connect();
+    let user;
+    try {
+      await client.query('BEGIN');
 
-    const user = result.rows[0];
+      // Neuen Benutzer in die Datenbank einfügen
+      const result = await client.query(
+        `INSERT INTO users (username, password_hash, display_name, email, global_role, auth_source)
+         VALUES ($1, $2, $3, $4, $5, 'local') RETURNING id, username, display_name, email, global_role, auth_source, created_at`,
+        [username.trim().toLowerCase(), hash, displayName || username, email || null, role]
+      );
+      user = result.rows[0];
+
+      // Privaten Bereich für neuen Benutzer erstellen
+      await client.query('INSERT INTO private_spaces (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [user.id]);
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     // Benutzererstellung im Audit-Log protokollieren
     await auditLog(req.user.id, req.user.username, 'create_user', 'user', user.id, { target: user.username, role }, getIp(req));
 
     // Erstellten Benutzer mit Status 201 (Created) zurückgeben
-    // Privaten Bereich für neuen Benutzer erstellen
-    await pool.query('INSERT INTO private_spaces (user_id) VALUES ($1) ON CONFLICT DO NOTHING', [user.id]);
-
     res.status(201).json({ id: user.id, username: user.username, displayName: user.display_name, email: user.email, globalRole: user.global_role, authSource: user.auth_source });
   } catch (err) {
     // Fehlercode 23505 = Unique-Constraint-Verletzung (Benutzername existiert bereits)
     if (err.code === '23505') return res.status(409).json({ error: 'Username already exists.' });
-    console.error('Error creating user:', err.message);
+    logger.error({ err }, 'Error creating user');
     res.status(500).json({ error: 'Failed to create user' });
   }
 });
@@ -163,7 +172,7 @@ router.put('/users/:id', authenticate, requirePermission('users.manage'), writeL
     // Aktualisierte Benutzerdaten zurückgeben
     res.json({ id: user.id, username: user.username, displayName: user.display_name, email: user.email, globalRole: user.global_role, authSource: user.auth_source, isActive: user.is_active });
   } catch (err) {
-    console.error('Error updating user:', err.message);
+    logger.error({ err }, 'Error updating user');
     res.status(500).json({ error: 'Failed to update user' });
   }
 });
@@ -197,7 +206,7 @@ router.delete('/users/:id', authenticate, requirePermission('users.manage'), wri
 
     res.json({ message: 'User deleted' });
   } catch (err) {
-    console.error('Error deleting user:', err.message);
+    logger.error({ err }, 'Error deleting user');
     res.status(500).json({ error: 'Failed to delete user' });
   }
 });
@@ -221,7 +230,7 @@ router.get('/users/list', authenticate, async (req, res) => {
     // Minimale Benutzerdaten in camelCase zurückgeben
     res.json(result.rows.map(u => ({ id: u.id, username: u.username, displayName: u.display_name })));
   } catch (err) {
-    console.error('Error listing users:', err.message);
+    logger.error({ err }, 'Error listing users');
     res.status(500).json({ error: 'Failed to retrieve users' });
   }
 });

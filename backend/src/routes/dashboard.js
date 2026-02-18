@@ -14,11 +14,10 @@ const express = require('express');
 const router = express.Router();
 const { getPool } = require('../database');
 const { authenticate, requirePermission } = require('../middleware/auth');
-
-// ============================================================================
+const logger = require('../logger');
 // GET /dashboard/stats – Gesamtstatistiken
 // ============================================================================
-router.get('/dashboard/stats', authenticate, requirePermission('admin'), async (req, res) => {
+router.get('/dashboard/stats', authenticate, requirePermission('dashboard.read'), async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -43,7 +42,7 @@ router.get('/dashboard/stats', authenticate, requirePermission('admin'), async (
       templateCount: parseInt(templates.rows[0].count),
     });
   } catch (err) {
-    console.error('Error getting dashboard stats:', err.message);
+    logger.error({ err }, 'Error getting dashboard stats');
     res.status(500).json({ error: 'Failed to load stats' });
   }
 });
@@ -51,7 +50,7 @@ router.get('/dashboard/stats', authenticate, requirePermission('admin'), async (
 // ============================================================================
 // GET /dashboard/activity – Aktivitäts-Timeline (letzte 30 Tage)
 // ============================================================================
-router.get('/dashboard/activity', authenticate, requirePermission('admin'), async (req, res) => {
+router.get('/dashboard/activity', authenticate, requirePermission('dashboard.read'), async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -99,7 +98,7 @@ router.get('/dashboard/activity', authenticate, requirePermission('admin'), asyn
       loginsPerDay: loginsPerDay.rows,
     });
   } catch (err) {
-    console.error('Error getting activity data:', err.message);
+    logger.error({ err }, 'Error getting activity data');
     res.status(500).json({ error: 'Failed to load activity' });
   }
 });
@@ -107,7 +106,7 @@ router.get('/dashboard/activity', authenticate, requirePermission('admin'), asyn
 // ============================================================================
 // GET /dashboard/top-pages – Meistbearbeitete Seiten
 // ============================================================================
-router.get('/dashboard/top-pages', authenticate, requirePermission('admin'), async (req, res) => {
+router.get('/dashboard/top-pages', authenticate, requirePermission('dashboard.read'), async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -131,7 +130,7 @@ router.get('/dashboard/top-pages', authenticate, requirePermission('admin'), asy
 
     res.json(result.rows);
   } catch (err) {
-    console.error('Error getting top pages:', err.message);
+    logger.error({ err }, 'Error getting top pages');
     res.status(500).json({ error: 'Failed to load top pages' });
   }
 });
@@ -139,7 +138,7 @@ router.get('/dashboard/top-pages', authenticate, requirePermission('admin'), asy
 // ============================================================================
 // GET /dashboard/top-users – Aktivste Benutzer
 // ============================================================================
-router.get('/dashboard/top-users', authenticate, requirePermission('admin'), async (req, res) => {
+router.get('/dashboard/top-users', authenticate, requirePermission('dashboard.read'), async (req, res) => {
   const pool = getPool();
   if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
@@ -163,7 +162,7 @@ router.get('/dashboard/top-users', authenticate, requirePermission('admin'), asy
 
     res.json(result.rows);
   } catch (err) {
-    console.error('Error getting top users:', err.message);
+    logger.error({ err }, 'Error getting top users');
     res.status(500).json({ error: 'Failed to load top users' });
   }
 });

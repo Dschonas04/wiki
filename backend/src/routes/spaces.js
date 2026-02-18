@@ -20,12 +20,11 @@
 
 const { Router } = require('express');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { writeLimiter } = require('../middleware/security');
 const { getPool } = require('../database');
 const { auditLog } = require('../helpers/audit');
-
-const router = Router();
-
-/**
+const { getIp } = require('../helpers/utils');
+const logger = require('../logger');
  * Hilfsfunktion: Prüft ob ein Benutzer Owner oder Admin eines Bereichs ist.
  * @param {number} userId - Benutzer-ID
  * @param {number} spaceId - Bereichs-ID
@@ -79,7 +78,7 @@ router.get('/spaces', authenticate, async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Fehler beim Laden der Bereiche:', err);
+    logger.error({ err }, 'Fehler beim Laden der Bereiche');
     res.status(500).json({ error: 'Failed to load spaces' });
   }
 });
@@ -88,7 +87,8 @@ router.get('/spaces', authenticate, async (req, res) => {
 router.get('/spaces/:id', authenticate, async (req, res) => {
   try {
     const pool = getPool();
-    const spaceId = req.params.id;
+    const spaceId = parseInt(req.params.id);
+    if (isNaN(spaceId)) return res.status(400).json({ error: 'Invalid space ID' });
 
     // Bereich laden
     const space = await pool.query(
@@ -139,13 +139,13 @@ router.get('/spaces/:id', authenticate, async (req, res) => {
       pages: pages.rows,
     });
   } catch (err) {
-    console.error('Fehler beim Laden des Bereichs:', err);
+    logger.error({ err }, 'Fehler beim Laden des Bereichs');
     res.status(500).json({ error: 'Failed to load space' });
   }
 });
 
 // ===== POST /spaces – Bereich erstellen =====
-router.post('/spaces', authenticate, async (req, res) => {
+router.post('/spaces', authenticate, writeLimiter, async (req, res) => {
   try {
     const { name, description, icon, organizationId } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
@@ -161,31 +161,46 @@ router.post('/spaces', authenticate, async (req, res) => {
       orgId = org.rows[0].id;
     }
 
-    const result = await pool.query(
-      `INSERT INTO team_spaces (organization_id, name, slug, description, icon, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [orgId, name.trim(), slug, description?.trim() || '', icon || 'folder', req.user.id]
-    );
+    const client = await pool.connect();
+    let space;
+    try {
+      await client.query('BEGIN');
 
-    // Ersteller wird automatisch Owner
-    await pool.query(
-      `INSERT INTO space_memberships (space_id, user_id, role) VALUES ($1, $2, 'owner')`,
-      [result.rows[0].id, req.user.id]
-    );
+      const result = await client.query(
+        `INSERT INTO team_spaces (organization_id, name, slug, description, icon, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [orgId, name.trim(), slug, description?.trim() || '', icon || 'folder', req.user.id]
+      );
+      space = result.rows[0];
 
-    await auditLog(req.user.id, req.user.username, 'create_space', 'team_space', result.rows[0].id, null, req);
-    res.status(201).json({ ...result.rows[0], my_role: 'owner' });
+      // Ersteller wird automatisch Owner
+      await client.query(
+        `INSERT INTO space_memberships (space_id, user_id, role) VALUES ($1, $2, 'owner')`,
+        [space.id, req.user.id]
+      );
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    await auditLog(req.user.id, req.user.username, 'create_space', 'team_space', space.id, null, getIp(req));
+    res.status(201).json({ ...space, my_role: 'owner' });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'A space with this name already exists in this organization' });
-    console.error('Fehler beim Erstellen des Bereichs:', err);
+    logger.error({ err }, 'Fehler beim Erstellen des Bereichs');
     res.status(500).json({ error: 'Failed to create space' });
   }
 });
 
 // ===== PUT /spaces/:id – Bereich bearbeiten =====
-router.put('/spaces/:id', authenticate, async (req, res) => {
+router.put('/spaces/:id', authenticate, writeLimiter, async (req, res) => {
   try {
-    const spaceId = req.params.id;
+    const spaceId = parseInt(req.params.id);
+    if (isNaN(spaceId)) return res.status(400).json({ error: 'Invalid space ID' });
     if (!(await isSpaceOwnerOrAdmin(req.user.id, spaceId, req.user.global_role))) {
       return res.status(403).json({ error: 'Only space owners or admins can edit spaces' });
     }
@@ -200,28 +215,29 @@ router.put('/spaces/:id', authenticate, async (req, res) => {
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Space not found' });
 
-    await auditLog(req.user.id, req.user.username, 'update_space', 'team_space', parseInt(spaceId), null, req);
+    await auditLog(req.user.id, req.user.username, 'update_space', 'team_space', parseInt(spaceId), null, getIp(req));
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Fehler beim Bearbeiten des Bereichs:', err);
+    logger.error({ err }, 'Fehler beim Bearbeiten des Bereichs');
     res.status(500).json({ error: 'Failed to update space' });
   }
 });
 
 // ===== DELETE /spaces/:id – Bereich archivieren =====
-router.delete('/spaces/:id', authenticate, async (req, res) => {
+router.delete('/spaces/:id', authenticate, writeLimiter, async (req, res) => {
   try {
-    const spaceId = req.params.id;
+    const spaceId = parseInt(req.params.id);
+    if (isNaN(spaceId)) return res.status(400).json({ error: 'Invalid space ID' });
     if (!(await isSpaceOwnerOrAdmin(req.user.id, spaceId, req.user.global_role))) {
       return res.status(403).json({ error: 'Only space owners or admins can archive spaces' });
     }
 
     const pool = getPool();
     await pool.query('UPDATE team_spaces SET is_archived = true WHERE id = $1', [spaceId]);
-    await auditLog(req.user.id, req.user.username, 'archive_space', 'team_space', parseInt(spaceId), null, req);
+    await auditLog(req.user.id, req.user.username, 'archive_space', 'team_space', parseInt(spaceId), null, getIp(req));
     res.json({ message: 'Space archived' });
   } catch (err) {
-    console.error('Fehler beim Archivieren des Bereichs:', err);
+    logger.error({ err }, 'Fehler beim Archivieren des Bereichs');
     res.status(500).json({ error: 'Failed to archive space' });
   }
 });
@@ -229,6 +245,9 @@ router.delete('/spaces/:id', authenticate, async (req, res) => {
 // ===== GET /spaces/:id/members – Mitglieder auflisten =====
 router.get('/spaces/:id/members', authenticate, async (req, res) => {
   try {
+    const spaceId = parseInt(req.params.id);
+    if (isNaN(spaceId)) return res.status(400).json({ error: 'Invalid space ID' });
+
     const pool = getPool();
     const result = await pool.query(
       `SELECT sm.*, u.username, u.display_name, u.email, u.global_role
@@ -238,19 +257,20 @@ router.get('/spaces/:id/members', authenticate, async (req, res) => {
        ORDER BY
          CASE sm.role WHEN 'owner' THEN 0 WHEN 'editor' THEN 1 WHEN 'reviewer' THEN 2 ELSE 3 END,
          u.display_name`,
-      [req.params.id]
+      [spaceId]
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Fehler beim Laden der Mitglieder:', err);
+    logger.error({ err }, 'Fehler beim Laden der Mitglieder');
     res.status(500).json({ error: 'Failed to load members' });
   }
 });
 
 // ===== POST /spaces/:id/members – Mitglied hinzufügen =====
-router.post('/spaces/:id/members', authenticate, async (req, res) => {
+router.post('/spaces/:id/members', authenticate, writeLimiter, async (req, res) => {
   try {
-    const spaceId = req.params.id;
+    const spaceId = parseInt(req.params.id);
+    if (isNaN(spaceId)) return res.status(400).json({ error: 'Invalid space ID' });
     if (!(await isSpaceOwnerOrAdmin(req.user.id, spaceId, req.user.global_role))) {
       return res.status(403).json({ error: 'Only space owners or admins can manage members' });
     }
@@ -270,7 +290,7 @@ router.post('/spaces/:id/members', authenticate, async (req, res) => {
     );
 
     await auditLog(req.user.id, req.user.username, 'add_space_member', 'team_space', parseInt(spaceId),
-      { targetUserId: userId, role }, req);
+      { targetUserId: userId, role }, getIp(req));
 
     // Aktualisierte Mitgliederliste zurückgeben
     const result = await pool.query(
@@ -281,15 +301,16 @@ router.post('/spaces/:id/members', authenticate, async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error('Fehler beim Hinzufügen des Mitglieds:', err);
+    logger.error({ err }, 'Fehler beim Hinzufügen des Mitglieds');
     res.status(500).json({ error: 'Failed to add member' });
   }
 });
 
 // ===== PUT /spaces/:id/members/:userId – Rolle ändern =====
-router.put('/spaces/:id/members/:userId', authenticate, async (req, res) => {
+router.put('/spaces/:id/members/:userId', authenticate, writeLimiter, async (req, res) => {
   try {
-    const spaceId = req.params.id;
+    const spaceId = parseInt(req.params.id);
+    if (isNaN(spaceId)) return res.status(400).json({ error: 'Invalid space ID' });
     if (!(await isSpaceOwnerOrAdmin(req.user.id, spaceId, req.user.global_role))) {
       return res.status(403).json({ error: 'Only space owners or admins can change roles' });
     }
@@ -307,18 +328,19 @@ router.put('/spaces/:id/members/:userId', authenticate, async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Membership not found' });
 
     await auditLog(req.user.id, req.user.username, 'change_space_role', 'team_space', parseInt(spaceId),
-      { targetUserId: parseInt(req.params.userId), newRole: role }, req);
+      { targetUserId: parseInt(req.params.userId), newRole: role }, getIp(req));
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('Fehler beim Ändern der Rolle:', err);
+    logger.error({ err }, 'Fehler beim Ändern der Rolle');
     res.status(500).json({ error: 'Failed to change role' });
   }
 });
 
 // ===== DELETE /spaces/:id/members/:userId – Mitglied entfernen =====
-router.delete('/spaces/:id/members/:userId', authenticate, async (req, res) => {
+router.delete('/spaces/:id/members/:userId', authenticate, writeLimiter, async (req, res) => {
   try {
-    const spaceId = req.params.id;
+    const spaceId = parseInt(req.params.id);
+    if (isNaN(spaceId)) return res.status(400).json({ error: 'Invalid space ID' });
     if (!(await isSpaceOwnerOrAdmin(req.user.id, spaceId, req.user.global_role))) {
       return res.status(403).json({ error: 'Only space owners or admins can remove members' });
     }
@@ -330,10 +352,10 @@ router.delete('/spaces/:id/members/:userId', authenticate, async (req, res) => {
     );
 
     await auditLog(req.user.id, req.user.username, 'remove_space_member', 'team_space', parseInt(spaceId),
-      { targetUserId: parseInt(req.params.userId) }, req);
+      { targetUserId: parseInt(req.params.userId) }, getIp(req));
     res.json({ message: 'Member removed' });
   } catch (err) {
-    console.error('Fehler beim Entfernen des Mitglieds:', err);
+    logger.error({ err }, 'Fehler beim Entfernen des Mitglieds');
     res.status(500).json({ error: 'Failed to remove member' });
   }
 });

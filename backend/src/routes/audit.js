@@ -26,6 +26,7 @@ const router = express.Router();
 const { getPool } = require('../database');
 // Authentifizierungs- und Berechtigungs-Middleware
 const { authenticate, requirePermission } = require('../middleware/auth');
+const logger = require('../logger');
 
 // ============================================================================
 // GET /audit – Audit-Log-Einträge abrufen (paginiert)
@@ -43,7 +44,7 @@ router.get('/audit', authenticate, requirePermission('audit.read'), async (req, 
   // Math.min verhindert, dass mehr als 200 Einträge auf einmal abgefragt werden
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   // Offset aus Query-Parametern lesen, Standard ist 0 (erste Seite)
-  const offset = parseInt(req.query.offset) || 0;
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
   try {
     // Audit-Log-Einträge abfragen, sortiert nach Datum (neueste zuerst)
     const result = await pool.query('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
@@ -53,7 +54,7 @@ router.get('/audit', authenticate, requirePermission('audit.read'), async (req, 
     res.json({ items: result.rows, total: parseInt(count.rows[0].count), limit, offset });
   } catch (err) {
     // Fehlerbehandlung bei Datenbankfehlern
-    console.error('Audit log error:', err.message);
+    logger.error({ err }, 'Audit log error');
     res.status(500).json({ error: 'Failed to retrieve audit log' });
   }
 });

@@ -1,5 +1,5 @@
 # ========== Stage 1: Build React App ==========
-FROM node:18-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -12,19 +12,20 @@ COPY . .
 RUN npm run build
 
 # ========== Stage 2: Serve with Nginx ==========
-FROM nginx:1.25-alpine
+FROM nginx:1.27-alpine
 
 # Remove default config
 RUN rm /etc/nginx/conf.d/default.conf
 
-# Generate self-signed SSL certificate (10 years, RSA 2048)
-RUN apk add --no-cache openssl && \
-    mkdir -p /etc/nginx/ssl && \
+# SSL-Verzeichnis vorbereiten und Fallback-Zertifikat generieren
+# (wird per docker-compose Volume mit echten Zertifikaten überschrieben)
+RUN mkdir -p /etc/nginx/ssl && \
+    apk add --no-cache openssl && \
     openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
       -keyout /etc/nginx/ssl/server.key \
       -out /etc/nginx/ssl/server.crt \
-      -subj "/C=DE/ST=Local/L=Local/O=Nexora/CN=localhost" \
-      -addext "subjectAltName=DNS:localhost,DNS:nexora.local,IP:127.0.0.1"
+      -subj "/CN=localhost/O=Nexora/C=DE" 2>/dev/null && \
+    apk del openssl
 
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/nginx.conf

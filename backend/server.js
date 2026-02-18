@@ -18,6 +18,9 @@ const express = require('express');
 // Konfigurationswerte aus zentraler config.js laden (Port, LDAP-Status)
 const { PORT, LDAP_ENABLED } = require('./src/config');
 
+// Strukturierter Logger (pino)
+const logger = require('./src/logger');
+
 // Datenbankmodul: connectWithRetry stellt Verbindung her, getPool liefert den Connection-Pool
 const { connectWithRetry, getPool } = require('./src/database');
 
@@ -136,41 +139,36 @@ async function startServer() {
   const connected = await connectWithRetry();
   if (!connected) {
     // Ohne Datenbank kann der Server nicht arbeiten – Prozess beenden
-    console.error('Exiting – database unavailable');
+    logger.fatal('Exiting – database unavailable');
     process.exit(1);
   }
 
   // HTTP-Server auf allen Netzwerk-Interfaces (0.0.0.0) starten
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Nexora API-Server laeuft auf Port ${PORT}`);
-    // Statusmeldung: LDAP-Modus und aktive Rollenverteilung (RBAC)
-    console.log(`LDAP: ${LDAP_ENABLED ? 'enabled' : 'disabled'} | RBAC: active (admin, auditor, user)`);
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    logger.info({ port: PORT, ldap: LDAP_ENABLED }, `Nexora API-Server laeuft auf Port ${PORT}`);
+    logger.info(`LDAP: ${LDAP_ENABLED ? 'enabled' : 'disabled'} | RBAC: active (admin, auditor, user)`);
   });
+
+  // ── Graceful Shutdown ──
+  const gracefulShutdown = async (signal) => {
+    logger.info(`${signal} empfangen – Graceful Shutdown`);
+    server.close(async () => {
+      logger.info('HTTP-Server geschlossen');
+      const pool = getPool();
+      if (pool) await pool.end();
+      logger.info('DB-Pool geschlossen');
+      process.exit(0);
+    });
+    // Falls server.close() hängt, nach 10s forciert beenden
+    setTimeout(() => {
+      logger.error('Shutdown Timeout – erzwinge Beendigung');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 }
-
-// ============================================================
-// Graceful Shutdown – SIGTERM
-// Wird z.B. von Docker/Kubernetes gesendet, wenn der Container gestoppt wird.
-// Schliesst den Datenbank-Pool sauber, bevor der Prozess beendet wird.
-// ============================================================
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM');
-  const pool = getPool();
-  if (pool) await pool.end(); // Alle offenen DB-Verbindungen schliessen
-  process.exit(0);
-});
-
-// ============================================================
-// Graceful Shutdown – SIGINT
-// Wird z.B. durch Ctrl+C im Terminal ausgeloest.
-// Gleiche Bereinigung wie bei SIGTERM.
-// ============================================================
-process.on('SIGINT', async () => {
-  console.log('SIGINT');
-  const pool = getPool();
-  if (pool) await pool.end(); // Alle offenen DB-Verbindungen schliessen
-  process.exit(0);
-});
 
 // Nexora-Anwendung starten – ruft die async startServer-Funktion auf
 startServer();

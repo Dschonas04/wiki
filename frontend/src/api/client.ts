@@ -402,7 +402,7 @@ async function request<T>(method: string, path: string, data?: unknown): Promise
   const res = await fetch(`${API_BASE}${path}`, opts);
   if (res.status === 401 && !path.startsWith('/auth/')) {
     window.dispatchEvent(new CustomEvent('auth:expired'));
-    const msg = 'Sitzung abgelaufen. Bitte erneut anmelden.';
+    const msg = 'Session expired. Please log in again.';
     const err = new Error(msg) as Error & { status: number; data: unknown };
     err.status = 401;
     err.data = null;
@@ -410,7 +410,7 @@ async function request<T>(method: string, path: string, data?: unknown): Promise
   }
   const json = await res.json().catch(() => null);
   if (!res.ok) {
-    const msg = (json as ApiError)?.error || `Anfrage fehlgeschlagen (${res.status})`;
+    const msg = (json as ApiError)?.error || `Request failed (${res.status})`;
     const err = new Error(msg) as Error & { status: number; data: unknown };
     err.status = res.status;
     err.data = json;

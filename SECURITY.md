@@ -6,7 +6,7 @@ If you discover a security vulnerability, **please do not open a public issue**.
 
 Instead, report it privately:
 
-1. Email: *(add your contact email here)*
+1. Email: security@nexora.local (or contact via [GitHub](https://github.com/Dschonas04))
 2. Or use GitHub's [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
 
 Please include:

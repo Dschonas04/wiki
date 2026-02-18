@@ -18,6 +18,7 @@
 
 // Datenbankverbindung: Pool-Objekt für PostgreSQL-Abfragen
 const { getPool } = require('../database');
+const logger = require('../logger');
 
 /**
  * Erstellt einen Eintrag im Audit-Log
@@ -53,7 +54,7 @@ async function auditLog(userId, username, action, resourceType, resourceId, deta
   } catch (err) {
     // Fehler beim Audit-Logging dürfen die Anwendung nicht zum Absturz bringen
     // Stattdessen wird der Fehler nur auf der Konsole protokolliert
-    console.error('Audit log error:', err.message);
+    logger.error({ err }, 'Audit log write error');
   }
 }
 

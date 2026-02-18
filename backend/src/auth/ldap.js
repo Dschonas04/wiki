@@ -22,6 +22,27 @@ const {
   LDAP_ENABLED, LDAP_URL, LDAP_BIND_DN, LDAP_BIND_PW,
   LDAP_SEARCH_BASE, LDAP_SEARCH_FILTER, LDAP_ROLE_MAP,
 } = require('../config');
+const logger = require('../logger');
+
+/**
+ * Escapet Sonderzeichen fuer LDAP-Suchfilter gemaess RFC 4515.
+ * Verhindert LDAP-Injection durch korrekte Hex-Escape-Sequenzen.
+ * @param {string} str - Der zu bereinigende Eingabestring
+ * @returns {string} Der RFC 4515 konform escapete String
+ */
+function escapeLdapFilter(str) {
+  let escaped = '';
+  for (const ch of str) {
+    const code = ch.charCodeAt(0);
+    // NUL, *, (, ), \, und Bytes >= 0x80 muessen escaped werden
+    if (code === 0x00 || ch === '*' || ch === '(' || ch === ')' || ch === '\\' || code >= 0x80) {
+      escaped += '\\' + code.toString(16).padStart(2, '0');
+    } else {
+      escaped += ch;
+    }
+  }
+  return escaped;
+}
 
 /**
  * Authentifiziert einen Benutzer gegen den LDAP-Verzeichnisdienst.
@@ -53,7 +74,7 @@ function ldapAuthenticate(username, password) {
 
     // Fehlerbehandlung fuer LDAP-Verbindungsprobleme
     client.on('error', (err) => {
-      console.error('LDAP error:', err.message);
+      logger.error({ err }, 'LDAP connection error');
       reject(new Error('LDAP connection failed'));
     });
 
@@ -72,8 +93,9 @@ function ldapAuthenticate(username, password) {
       // Sonderzeichen werden entfernt, um LDAP-Injection zu verhindern.
       // ============================================================
 
-      // Benutzernamen bereinigen: Klammern, Backslashes und Wildcards entfernen (LDAP-Injection-Schutz)
-      const filter = LDAP_SEARCH_FILTER.replace('{{username}}', username.replace(/[()\\*]/g, ''));
+      // Benutzernamen bereinigen: RFC 4515 konforme Escape-Behandlung (LDAP-Injection-Schutz)
+      const safeUsername = escapeLdapFilter(username);
+      const filter = LDAP_SEARCH_FILTER.replace('{{username}}', safeUsername);
 
       // Suchoptionen: Unterhalb der Basis suchen, gewuenschte Attribute anfordern
       const searchOpts = { scope: 'sub', filter, attributes: ['uid', 'cn', 'mail', 'displayName', 'memberOf'] };
@@ -140,10 +162,11 @@ function ldapAuthenticate(username, password) {
             // Schritt 4: Rollenzuordnung
             // Die LDAP-Gruppenmitgliedschaften (memberOf) werden durchlaufen
             // und anhand der LDAP_ROLE_MAP auf Wiki-Rollen abgebildet.
-            // Prioritaetsreihenfolge: admin > editor > viewer
-            // Standard-Rolle ist 'viewer', falls keine passende Gruppe gefunden wird.
+            // Prioritaetsreihenfolge: admin > auditor > user
+            // Standard-Rolle ist 'user', falls keine passende Gruppe gefunden wird.
             // ============================================================
-            let role = 'viewer'; // Standard-Rolle
+            const ROLE_PRIORITY = { admin: 3, auditor: 2, user: 1 };
+            let role = 'user'; // Standard-Rolle
 
             for (const mo of userEntry.memberOf) {
               // CN (Common Name) der Gruppe aus dem DN extrahieren
@@ -156,10 +179,10 @@ function ldapAuthenticate(username, password) {
                 if (LDAP_ROLE_MAP[group]) {
                   const mapped = LDAP_ROLE_MAP[group];
 
-                  // Admin hat hoechste Prioritaet – ueberschreibt alle anderen Rollen
-                  if (mapped === 'admin') role = 'admin';
-                  // Editor nur setzen, wenn noch nicht Admin zugewiesen
-                  else if (mapped === 'editor' && role !== 'admin') role = 'editor';
+                  // Hoechste Prioritaet gewinnt: admin > auditor > user
+                  if ((ROLE_PRIORITY[mapped] || 0) > (ROLE_PRIORITY[role] || 0)) {
+                    role = mapped;
+                  }
                 }
               }
             }

@@ -24,6 +24,7 @@ const router = express.Router();
 const { getPool } = require('../database');
 const { authenticate } = require('../middleware/auth');
 const { writeLimiter } = require('../middleware/security');
+const logger = require('../logger');
 
 // ============================================================================
 // GET /favorites - Alle Favoriten des Benutzers auflisten
@@ -43,11 +44,11 @@ router.get('/favorites', authenticate, async (req, res) => {
       FROM wiki_favorites f
       JOIN wiki_pages p ON f.page_id = p.id
       LEFT JOIN users u ON p.updated_by = u.id
-      WHERE f.user_id = $1
+      WHERE f.user_id = $1 AND p.deleted_at IS NULL
       ORDER BY f.created_at DESC`, [req.user.id]);
     res.json(result.rows);
   } catch (err) {
-    console.error('Error getting favorites:', err.message);
+    logger.error({ err }, 'Error getting favorites');
     res.status(500).json({ error: 'Failed to retrieve favorites' });
   }
 });
@@ -82,7 +83,7 @@ router.post('/favorites/:pageId', authenticate, writeLimiter, async (req, res) =
       res.json({ favorited: true });
     }
   } catch (err) {
-    console.error('Error toggling favorite:', err.message);
+    logger.error({ err }, 'Error toggling favorite');
     res.status(500).json({ error: 'Failed to toggle favorite' });
   }
 });

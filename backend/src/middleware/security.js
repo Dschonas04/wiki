@@ -18,6 +18,9 @@
 // Helmet: Setzt verschiedene HTTP-Header zum Schutz vor bekannten Web-Schwachstellen
 const helmet = require('helmet');
 
+// CORS: Cross-Origin Resource Sharing Konfiguration
+const cors = require('cors');
+
 // Compression: Komprimiert HTTP-Antworten (gzip/deflate) für bessere Performance
 const compression = require('compression');
 
@@ -29,6 +32,9 @@ const cookieParser = require('cookie-parser');
 
 // Express-Framework: Wird hier für den JSON-Body-Parser benötigt
 const express = require('express');
+
+// Strukturierter Logger (pino)
+const logger = require('../logger');
 
 /**
  * Konfiguriert alle Sicherheits-Middleware für die Express-Anwendung
@@ -55,6 +61,22 @@ function setupSecurity(app) {
 
   // HTTP-Antwortkomprimierung aktivieren (reduziert Bandbreite)
   app.use(compression());
+
+  // CORS-Konfiguration: Nur Same-Origin und konfigurierte Origins erlauben
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',')
+    : [];
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Anfragen ohne Origin (Same-Origin, Server-zu-Server) erlauben
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error('CORS not allowed'));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Accept', 'X-Requested-With'],
+  }));
 
   // Cookie-Parser aktivieren (stellt req.cookies bereit)
   app.use(cookieParser());
@@ -104,8 +126,15 @@ function setupSecurity(app) {
     res.on('finish', () => {
       // Antwortzeit in Millisekunden berechnen
       const ms = Date.now() - start;
-      // Formatierte Log-Ausgabe auf der Konsole
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} → ${res.statusCode} (${ms}ms) [${rid}]`);
+      // Strukturierte Log-Ausgabe mit pino
+      logger.info({
+        method: req.method,
+        url: req.originalUrl,
+        statusCode: res.statusCode,
+        responseTime: ms,
+        requestId: rid,
+        ip: req.headers['x-real-ip'] || req.ip,
+      }, `${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`);
     });
 
     // Weiter zur nächsten Middleware

@@ -18,6 +18,24 @@ const jwt = require('jsonwebtoken');
 const { JWT_SECRET, JWT_EXPIRES, COOKIE_NAME, COOKIE_SECURE } = require('../config');
 
 /**
+ * Wandelt einen JWT-Ablaufzeit-String (z.B. '8h', '30m', '7d') in Millisekunden um.
+ * @param {string} expr - Ablaufzeit als String
+ * @returns {number} Millisekunden
+ */
+function parseExpiryMs(expr) {
+  const match = String(expr).match(/^(\d+)\s*(s|m|h|d)$/i);
+  if (!match) return 8 * 60 * 60 * 1000; // Fallback: 8 Stunden
+  const n = parseInt(match[1], 10);
+  switch (match[2].toLowerCase()) {
+    case 's': return n * 1000;
+    case 'm': return n * 60 * 1000;
+    case 'h': return n * 60 * 60 * 1000;
+    case 'd': return n * 24 * 60 * 60 * 1000;
+    default:  return 8 * 60 * 60 * 1000;
+  }
+}
+
+/**
  * Erstellt einen signierten JWT-Token fuer den angegebenen Benutzer.
  * 
  * Der Token enthaelt folgende Claims (Payload-Daten):
@@ -63,7 +81,7 @@ function setTokenCookie(res, token) {
     httpOnly: true,                              // Kein Zugriff ueber JavaScript (XSS-Schutz)
     secure: COOKIE_SECURE,                       // Nur ueber HTTPS senden (Produktion)
     sameSite: COOKIE_SECURE ? 'strict' : 'lax', // CSRF-Schutz: strict bei HTTPS, lax bei HTTP
-    maxAge: 8 * 60 * 60 * 1000,                 // 8 Stunden in Millisekunden
+    maxAge: parseExpiryMs(JWT_EXPIRES),          // Synchron mit JWT-Ablaufzeit
     path: '/',                                   // Cookie gilt fuer alle Pfade
   });
 }

@@ -11,8 +11,17 @@ services:
     depends_on:
       wiki:
         condition: service_healthy
+    volumes:
+      # SSL-Zertifikate per Volume mounten (optional, für HTTPS)
+      # - ./certs/server.crt:/etc/nginx/ssl/server.crt:ro
+      # - ./certs/server.key:/etc/nginx/ssl/server.key:ro
     networks:
-      - nexora-network
+      - nexora-frontend
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:80/healthz || exit 1"]
       interval: 15s
@@ -48,7 +57,13 @@ services:
     volumes:
       - attachments_data:/app/uploads
     networks:
-      - nexora-network
+      - nexora-frontend
+      - nexora-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q healthy"]
       interval: 15s
@@ -71,7 +86,12 @@ services:
       - ./config/ldap:/container/service/slapd/assets/config/bootstrap/ldif/custom
     command: "--copy-service --loglevel debug"
     networks:
-      - nexora-network
+      - nexora-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost -b dc=nexora,dc=local -D cn=admin,dc=nexora,dc=local -w $$LDAP_ADMIN_PASSWORD"]
       interval: 15s
@@ -95,7 +115,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - nexora-network
+      - nexora-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
 
 volumes:
   db_data:
@@ -108,6 +133,10 @@ volumes:
     name: nexora-attachments-data
 
 networks:
-  nexora-network:
-    name: nexora-network
+  nexora-frontend:
+    name: nexora-frontend
     driver: bridge
+  nexora-backend:
+    name: nexora-backend
+    driver: bridge
+    internal: true

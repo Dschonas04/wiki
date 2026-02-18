@@ -52,10 +52,19 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
   // Übersetzungsfunktion
   const { t } = useLanguage();
 
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
   // Dateien aus dem Eingabefeld übernehmen und Ergebnisse zurücksetzen
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+      const valid = Array.from(e.target.files).filter(f => {
+        if (f.size > MAX_FILE_SIZE) {
+          showToast(`${f.name}: Datei zu groß (max. 10 MB)`, 'error');
+          return false;
+        }
+        return true;
+      });
+      setFiles(valid);
       setResults([]);
     }
   };
@@ -159,7 +168,8 @@ export default function ImportDialog({ onClose, onImported }: ImportDialogProps)
               e.preventDefault();
               e.currentTarget.classList.remove('dragover');
               if (e.dataTransfer.files.length) {
-                setFiles(Array.from(e.dataTransfer.files));
+                const valid = Array.from(e.dataTransfer.files).filter(f => f.size <= MAX_FILE_SIZE);
+                setFiles(valid);
                 setResults([]);
               }
             }}

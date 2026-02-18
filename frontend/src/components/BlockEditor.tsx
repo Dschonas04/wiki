@@ -61,6 +61,16 @@ const SLASH_COMMANDS = [
   { id: 'image', label: 'Bild (URL)', icon: '🖼', action: null }, // handled separately
 ];
 
+/** Prüft ob eine URL ein sicheres Protokoll verwendet */
+const isValidUrl = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:', 'mailto:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+};
+
 export default function BlockEditor({ content, onChange, placeholder, editable = true }: BlockEditorProps) {
   const { t } = useLanguage();
   const [slashOpen, setSlashOpen] = useState(false);
@@ -149,7 +159,7 @@ export default function BlockEditor({ content, onChange, placeholder, editable =
     if (editor && content !== editor.getHTML()) {
       editor.commands.setContent(content, false);
     }
-  }, [content]);
+  }, [content, editor]);
 
   // Track slash filter
   useEffect(() => {
@@ -191,7 +201,7 @@ export default function BlockEditor({ content, onChange, placeholder, editable =
 
     if (cmd.id === 'image') {
       const url = window.prompt('Bild-URL eingeben:');
-      if (url) editor.chain().focus().setImage({ src: url }).run();
+      if (url && isValidUrl(url)) editor.chain().focus().setImage({ src: url }).run();
     } else if (cmd.action) {
       cmd.action(editor);
     }
@@ -219,14 +229,14 @@ export default function BlockEditor({ content, onChange, placeholder, editable =
     if (url === null) return;
     if (url === '') {
       editor.chain().focus().unsetLink().run();
-    } else {
+    } else if (isValidUrl(url)) {
       editor.chain().focus().setLink({ href: url }).run();
     }
   };
 
   const addImage = () => {
     const url = window.prompt('Bild-URL eingeben:');
-    if (url) editor.chain().focus().setImage({ src: url }).run();
+    if (url && isValidUrl(url)) editor.chain().focus().setImage({ src: url }).run();
   };
 
   const ToolBtn = ({ onClick, active, title, children }: {

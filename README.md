@@ -2,12 +2,12 @@
 
 A self-hosted knowledge base application with role-based access control (RBAC), optional LDAP authentication, multi-theme support, and an interactive knowledge graph.
 
-Built with **React 18**, **Node.js 18**, **PostgreSQL 15**, and **Nginx** — fully containerized with Docker Compose.
+Built with **React 18**, **Node.js 22 LTS**, **PostgreSQL 15**, and **Nginx** — fully containerized with Docker Compose.
 
 ## Features
 
 - **Authentication** — JWT sessions with httpOnly cookies, bcrypt password hashing
-- **RBAC** — Three roles: Admin, Editor, Viewer with granular permissions
+- **RBAC** — Three roles: Admin, Auditor, User with granular permissions
 - **LDAP** — Optional LDAP/Active Directory integration with group-to-role mapping
 - **Page Management** — Create, edit, version history, restore, search, soft delete / trash
 - **Visibility & Approval** — Draft/published workflow with admin approval system
@@ -38,7 +38,7 @@ Browser :8080
 | Service  | Image / Stack           | Purpose                                    |
 |----------|-------------------------|--------------------------------------------|
 | frontend | React + Vite → Nginx    | SPA + reverse proxy to API                 |
-| backend  | Node.js 18 + Express    | REST API, JWT auth, RBAC, LDAP             |
+| backend  | Node.js 22 + Express    | REST API, JWT auth, RBAC, LDAP             |
 | db       | PostgreSQL 15           | Users, pages, tags, settings, audit log    |
 | ldap     | osixia/openldap 1.5     | Optional external authentication           |
 
@@ -137,15 +137,16 @@ wiki/
 
 ## RBAC Roles
 
-| Permission      | Admin | Editor | Viewer |
-|-----------------|:-----:|:------:|:------:|
-| Read pages      |   ✅  |   ✅   |   ✅   |
-| Create pages    |   ✅  |   ✅   |   ❌   |
-| Edit pages      |   ✅  |   ✅   |   ❌   |
-| Delete pages    |   ✅  |   ✅   |   ❌   |
-| Manage users    |   ✅  |   ❌   |   ❌   |
-| View audit log  |   ✅  |   ❌   |   ❌   |
-| System health   |   ✅  |   ❌   |   ❌   |
+| Permission      | Admin | Auditor | User |
+|-----------------|:-----:|:-------:|:----:|
+| Read pages      |   ✅  |   ✅    |  ✅  |
+| Create pages    |   ✅  |   ❌    |  ✅  |
+| Edit pages      |   ✅  |   ❌    |  ❌  |
+| Delete pages    |   ✅  |   ❌    |  ❌  |
+| Review publish  |   ✅  |   ✅    |  ❌  |
+| Manage users    |   ✅  |   ❌    |  ❌  |
+| View audit log  |   ✅  |   ✅    |  ❌  |
+| System health   |   ✅  |   ❌    |  ❌  |
 
 ## API Endpoints
 
@@ -254,10 +255,10 @@ LDAP is **disabled by default**. To enable:
 LDAP groups are mapped to wiki roles:
 
 | LDAP Group | Wiki Role |
-|------------|-----------|
-| admins     | admin     |
-| editors    | editor    |
-| viewers    | viewer    |
+|------------|----------|
+| admins     | admin    |
+| auditors   | auditor  |
+| users      | user     |
 
 Users are auto-provisioned on first LDAP login. Local auth is used as fallback.
 
