@@ -63,13 +63,17 @@ function setupSecurity(app) {
   app.use(compression());
 
   // CORS-Konfiguration: Nur Same-Origin und konfigurierte Origins erlauben
+  // Wenn CORS_ORIGIN nicht gesetzt ist, wird der Request-Origin erlaubt
+  // (sicher, da Nginx als Reverse-Proxy die einzige Zugangsschicht ist)
   const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',')
-    : [];
+    ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+    : null;
   app.use(cors({
     origin: (origin, callback) => {
       // Anfragen ohne Origin (Same-Origin, Server-zu-Server) erlauben
       if (!origin) return callback(null, true);
+      // Wenn keine Origins konfiguriert: Request-Origin erlauben (hinter Reverse-Proxy)
+      if (!allowedOrigins) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error('CORS not allowed'));
     },

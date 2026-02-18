@@ -25,6 +25,10 @@ const { getPool } = require('../database');
 const { auditLog } = require('../helpers/audit');
 const { getIp } = require('../helpers/utils');
 const logger = require('../logger');
+
+const router = Router();
+
+/**
  * Hilfsfunktion: Prüft ob ein Benutzer Owner oder Admin eines Bereichs ist.
  * @param {number} userId - Benutzer-ID
  * @param {number} spaceId - Bereichs-ID

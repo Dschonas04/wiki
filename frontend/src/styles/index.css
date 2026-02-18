@@ -559,6 +559,107 @@ button {
   box-shadow: var(--shadow-sm);
 }
 
+/* ===== Spaces Grid ===== */
+.spaces-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 1rem;
+}
+
+.space-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  animation: fadeInUp 0.35s var(--ease) both;
+}
+.space-card:hover {
+  border-color: var(--c-primary);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.10);
+  transform: translateY(-2px);
+}
+.space-card:hover .space-card-arrow {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+.space-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--c-primary), #8b5cf6);
+  color: #fff;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.space-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.space-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--c-text);
+  line-height: 1.3;
+}
+
+.space-card-arrow {
+  opacity: 0.35;
+  flex-shrink: 0;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.space-card-desc {
+  margin: 0.3rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--c-text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.space-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--c-text-secondary);
+}
+.space-card-meta span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.space-card-role {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--c-primary-alpha, rgba(99, 102, 241, 0.1));
+  color: var(--c-primary);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+}
+
 .card-title {
   font-size: 16px;
   font-weight: 700;

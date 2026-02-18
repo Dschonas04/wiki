@@ -111,38 +111,35 @@ export default function Spaces() {
           </p>
         </div>
       ) : (
-        <div className="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
-          {spaces.map(space => (
-            <Link key={space.id} to={`/spaces/${space.id}`} className="card card-hover" style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <h3 style={{ margin: '0 0 0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Layers size={18} />
-                    {space.name}
-                  </h3>
-                  {space.description && (
-                    <p style={{ margin: '0 0 0.75rem', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
-                      {space.description}
-                    </p>
+        <div className="spaces-grid">
+          {spaces.map((space, i) => (
+            <Link
+              key={space.id}
+              to={`/spaces/${space.id}`}
+              className="space-card"
+              style={{ animationDelay: `${i * 0.05}s` }}
+            >
+              <div className="space-card-icon">
+                {space.icon || <Layers size={22} />}
+              </div>
+              <div className="space-card-body">
+                <div className="space-card-title">
+                  <span>{space.name}</span>
+                  <ChevronRight size={16} className="space-card-arrow" />
+                </div>
+                {space.description && (
+                  <p className="space-card-desc">{space.description}</p>
+                )}
+                <div className="space-card-meta">
+                  <span><FileText size={13} /> {t('spaces.page_count', { count: space.page_count || 0 })}</span>
+                  <span><Users size={13} /> {t('spaces.member_count', { count: space.member_count || 0 })}</span>
+                  {space.my_role && (
+                    <span className="space-card-role">
+                      {space.my_role === 'owner' ? t('role.owner') : space.my_role === 'editor' ? t('role.editor') : space.my_role === 'reviewer' ? t('role.reviewer') : t('role.viewer')}
+                    </span>
                   )}
                 </div>
-                <ChevronRight size={18} style={{ opacity: 0.4, flexShrink: 0 }} />
               </div>
-              <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <FileText size={13} /> {t('spaces.page_count', { count: space.page_count || 0 })}
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Users size={13} /> {t('spaces.member_count', { count: space.member_count || 0 })}
-                </span>
-              </div>
-              {space.my_role && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <span className="badge badge-info" style={{ fontSize: '0.75rem' }}>
-                    {space.my_role === 'owner' ? t('role.owner') : space.my_role === 'editor' ? t('role.editor') : space.my_role === 'reviewer' ? t('role.reviewer') : t('role.viewer')}
-                  </span>
-                </div>
-              )}
             </Link>
           ))}
         </div>

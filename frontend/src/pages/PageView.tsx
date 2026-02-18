@@ -253,7 +253,7 @@ export default function PageView() {
               <span className="btn btn-secondary" style={{ cursor: 'default', opacity: 0.85 }}>
                 {page.workflow_status === 'published' ? t('pageview.status_published') :
                  page.workflow_status === 'draft' ? t('pageview.status_draft') :
-                 page.workflow_status === 'review' ? t('pageview.status_review') :
+                 page.workflow_status === 'in_review' ? t('pageview.status_review') :
                  page.workflow_status}
               </span>
             )}
@@ -342,8 +342,8 @@ export default function PageView() {
           <div className="draft-banner">
             <span>
               {page.workflow_status === 'draft' && <>{t('pageview.banner_draft')}</>}
-              {page.workflow_status === 'review' && <>{t('pageview.banner_review')}</>}
-              {!['draft', 'review'].includes(page.workflow_status) && <><strong>{t('pageview.status_label')}</strong> {page.workflow_status}</>}
+              {page.workflow_status === 'in_review' && <>{t('pageview.banner_review')}</>}
+              {!['draft', 'in_review'].includes(page.workflow_status) && <><strong>{t('pageview.status_label')}</strong> {page.workflow_status}</>}
             </span>
           </div>
         )}

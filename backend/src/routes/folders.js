@@ -18,7 +18,12 @@ const { writeLimiter } = require('../middleware/security');
 const { getPool } = require('../database');
 const { auditLog } = require('../helpers/audit');
 const { getIp } = require('../helpers/utils');
-const logger = require('../logger');: Slug aus Name generieren.
+const logger = require('../logger');
+
+const router = Router();
+
+/**
+ * Hilfsfunktion: Slug aus Name generieren.
  */
 function slugify(name) {
   return name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9äöüß-]/g, '').replace(/-+/g, '-');

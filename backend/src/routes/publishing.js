@@ -31,6 +31,8 @@ const { auditLog } = require('../helpers/audit');
 const { getIp } = require('../helpers/utils');
 const logger = require('../logger');
 
+const router = Router();
+
 // ===== Gültige Statusübergänge =====
 const VALID_TRANSITIONS = {
   draft: ['in_review'],

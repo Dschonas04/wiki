@@ -496,13 +496,14 @@ export const api = {
     request<{ message: string }>('POST', `/publishing/pages/${id}/unpublish`),
 
   // ===== Seiten =====
-  getPages: (params?: { tagId?: number; spaceId?: number; folderId?: number }) => {
+  getPages: async (params?: { tagId?: number; spaceId?: number; folderId?: number }): Promise<WikiPage[]> => {
     const qp = new URLSearchParams();
     if (params?.tagId) qp.set('tag', String(params.tagId));
     if (params?.spaceId) qp.set('spaceId', String(params.spaceId));
     if (params?.folderId) qp.set('folderId', String(params.folderId));
     const qs = qp.toString();
-    return request<WikiPage[]>('GET', `/pages${qs ? `?${qs}` : ''}`);
+    const res = await request<{ items: WikiPage[]; total: number } | WikiPage[]>('GET', `/pages${qs ? `?${qs}` : ''}`);
+    return Array.isArray(res) ? res : res.items;
   },
   getRecentPages: (limit = 10) => request<WikiPage[]>('GET', `/pages/recent?limit=${limit}`),
   searchPages: (q: string) => request<WikiPage[]>('GET', `/pages/search?q=${encodeURIComponent(q)}`),

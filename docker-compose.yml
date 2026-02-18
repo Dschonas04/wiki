@@ -11,7 +11,7 @@ services:
     depends_on:
       wiki:
         condition: service_healthy
-    volumes:
+    # volumes:
       # SSL-Zertifikate per Volume mounten (optional, für HTTPS)
       # - ./certs/server.crt:/etc/nginx/ssl/server.crt:ro
       # - ./certs/server.key:/etc/nginx/ssl/server.key:ro
