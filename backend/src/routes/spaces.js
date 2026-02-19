@@ -149,7 +149,7 @@ router.get('/spaces/:id', authenticate, async (req, res) => {
 });
 
 // ===== POST /spaces – Bereich erstellen =====
-router.post('/spaces', authenticate, writeLimiter, async (req, res) => {
+router.post('/spaces', authenticate, requirePermission('spaces.create'), writeLimiter, async (req, res) => {
   try {
     const { name, description, icon, organizationId } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });

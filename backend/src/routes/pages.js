@@ -215,7 +215,11 @@ router.get('/pages/search', authenticate, requirePermission('pages.read'), async
     // Gelöschte Seiten und nicht-zugängliche Seiten werden ausgeschlossen
     const result = await pool.query(`
       SELECT p.*, u1.username AS created_by_name, u2.username AS updated_by_name,
-             ts_rank(p.search_vector, plainto_tsquery('simple', $1)) AS rank
+             ts_rank(p.search_vector, plainto_tsquery('simple', $1)) AS rank,
+             ts_headline('simple', p.title, plainto_tsquery('simple', $1),
+               'StartSel=<mark>, StopSel=</mark>, MaxWords=60, MinWords=20, MaxFragments=1') AS title_highlight,
+             ts_headline('simple', p.content, plainto_tsquery('simple', $1),
+               'StartSel=<mark>, StopSel=</mark>, MaxWords=60, MinWords=20, MaxFragments=2') AS snippet
       FROM wiki_pages p
       LEFT JOIN users u1 ON p.created_by = u1.id
       LEFT JOIN users u2 ON p.updated_by = u2.id
@@ -512,6 +516,21 @@ router.put('/pages/:id', authenticate, requirePermission('pages.edit'), writeLim
     const current = await client.query('SELECT * FROM wiki_pages WHERE id = $1', [id]);
     if (current.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Page not found' }); }
 
+    // Optimistic Locking: Prüfen ob die Seite seit dem Laden verändert wurde
+    if (req.body.expectedUpdatedAt) {
+      const expected = new Date(req.body.expectedUpdatedAt).getTime();
+      const actual = new Date(current.rows[0].updated_at).getTime();
+      if (actual > expected) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'conflict',
+          message: 'This page has been modified by another user. Please reload and try again.',
+          updatedBy: current.rows[0].updated_by,
+          updatedAt: current.rows[0].updated_at,
+        });
+      }
+    }
+
     // Per-Page Autorisierung: Prüfen ob User diese Seite bearbeiten darf
     if (req.user.global_role !== 'admin') {
       const page = current.rows[0];
@@ -677,6 +696,12 @@ router.put('/pages/:id/visibility', authenticate, requirePermission('pages.edit'
   // Gewünschte Sichtbarkeit aus dem Request-Body extrahieren und validieren
   const { visibility } = req.body;
   if (!['draft', 'in_review', 'changes_requested', 'approved', 'published', 'archived'].includes(visibility)) return res.status(400).json({ error: 'Invalid workflow status' });
+
+  // Nur Admins dürfen direkt auf published/approved/archived setzen
+  // Andere Benutzer müssen den Veröffentlichungs-Workflow nutzen
+  if (['published', 'approved', 'archived'].includes(visibility) && req.user.global_role !== 'admin') {
+    return res.status(403).json({ error: 'Only admins can directly publish, approve, or archive pages. Use the publishing workflow instead.' });
+  }
 
   try {
     // Seite aus der Datenbank laden

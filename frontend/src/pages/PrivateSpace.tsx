@@ -8,13 +8,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Lock, FileText, Plus, Send, Edit3, Trash2, Save, X, Eye, ChevronRight,
-  FolderOpen, ArrowLeft, Code,
+  FolderOpen, ArrowLeft, Code, Clock,
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type TeamSpace, type Folder } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useLanguage } from '../context/LanguageContext';
+import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
 import EditorToolbar from '../components/EditorToolbar';
 
 type ViewMode = 'list' | 'view' | 'edit' | 'new';
@@ -227,28 +229,37 @@ export default function PrivateSpacePage() {
         });
   };
 
+  const formatDate = (s: string) =>
+    new Date(s).toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
   if (loading) return <div className="content-body"><div className="loading-spinner" /></div>;
 
   // =================== EDITOR-ANSICHT (NEU / BEARBEITEN) ===================
   if (viewMode === 'new' || viewMode === 'edit') {
     return (
-      <div className="content-body">
-        <div className="page-header">
-          <div>
-            <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {viewMode === 'new' ? <Plus size={24} /> : <Edit3 size={24} />}
-              {viewMode === 'new' ? t('private.new_page') : t('private.edit_page')}
-            </h1>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn btn-secondary" onClick={() => currentPage ? setViewMode('view') : setViewMode('list')}>
-              <X size={16} /> {t('common.cancel')}
-            </button>
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving || !editTitle.trim()}>
-              <Save size={16} /> {saving ? t('private.saving') : t('common.save')}
-            </button>
-          </div>
-        </div>
+      <>
+        <PageHeader
+          title={viewMode === 'new' ? t('private.new_page') : t('private.edit_page')}
+          icon={viewMode === 'new' ? <Plus size={24} /> : <Edit3 size={24} />}
+          actions={
+            <div className="btn-row">
+              <button className="btn btn-secondary" onClick={() => currentPage ? setViewMode('view') : setViewMode('list')}>
+                <X size={16} /> {t('common.cancel')}
+              </button>
+              <button className="btn btn-primary" onClick={handleSave} disabled={saving || !editTitle.trim()}>
+                <Save size={16} /> {saving ? t('private.saving') : t('common.save')}
+              </button>
+            </div>
+          }
+        />
+
+        <div className="content-body">
 
         <form className="page-form" onSubmit={e => { e.preventDefault(); handleSave(); }}>
           {/* Titel */}
@@ -326,117 +337,95 @@ export default function PrivateSpacePage() {
             </div>
           </div>
         </form>
-      </div>
+        </div>
+      </>
     );
   }
 
   // =================== SEITEN-ANSICHT ===================
   if (viewMode === 'view' && currentPage) {
     return (
-      <div className="content-body">
+      <>
         {/* Breadcrumbs */}
-        <nav className="breadcrumb-nav" style={{ marginBottom: '1rem' }}>
-          <button
-            onClick={() => { setViewMode('list'); setCurrentPage(null); }}
-            className="breadcrumb-link"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-primary)', padding: 0 }}
-          >
+        <nav className="ps-breadcrumb">
+          <button onClick={() => { setViewMode('list'); setCurrentPage(null); }} className="ps-breadcrumb-link">
             <Lock size={14} /> {t('private.title')}
           </button>
           {currentPage.breadcrumbs?.map((crumb) => (
-            <span key={crumb.id}>
-              <ChevronRight size={14} style={{ margin: '0 0.25rem', color: 'var(--c-text-secondary)' }} />
-              <button
-                onClick={() => openPage(crumb.id)}
-                className="breadcrumb-link"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-primary)', padding: 0 }}
-              >
+            <span key={crumb.id} className="ps-breadcrumb-sep">
+              <ChevronRight size={14} />
+              <button onClick={() => openPage(crumb.id)} className="ps-breadcrumb-link">
                 {crumb.title}
               </button>
             </span>
           ))}
-          <span>
-            <ChevronRight size={14} style={{ margin: '0 0.25rem', color: 'var(--c-text-secondary)' }} />
-            <span style={{ fontWeight: 500 }}>{currentPage.title}</span>
+          <span className="ps-breadcrumb-sep">
+            <ChevronRight size={14} />
+            <span className="ps-breadcrumb-current">{currentPage.title}</span>
           </span>
         </nav>
 
-        {/* Page Header */}
-        <div className="page-header">
-          <div>
-            <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <FileText size={28} /> {currentPage.title}
-            </h1>
-            <p style={{ fontSize: '0.8rem', color: 'var(--c-text-secondary)', marginTop: '0.25rem' }}>
-              {t('private.last_modified')}{new Date(currentPage.updated_at || '').toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn btn-secondary" onClick={goBack}>
-              <ArrowLeft size={16} /> {t('private.back')}
-            </button>
-            <button className="btn btn-primary" onClick={() => startEdit(currentPage)}>
-              <Edit3 size={16} /> {t('private.edit_title')}
-            </button>
-            <button className="btn btn-secondary" onClick={() => openPublishDialog(currentPage.id)} title={t('private.publish_title')}>
-              <Send size={16} />
-            </button>
-            <button className="btn btn-danger" onClick={() => handleDelete(currentPage.id, currentPage.title)} title={t('private.delete_title')}>
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Seiteninhalt */}
-        <div className="card" style={{ padding: '2rem' }}>
-          <div
-            className="wiki-content"
-            dangerouslySetInnerHTML={{ __html: renderContent(currentPage.content, currentPage.content_type || 'markdown') }}
-          />
-        </div>
-
-        {/* Unterseiten */}
-        {currentPage.children && currentPage.children.length > 0 && (
-          <div className="card" style={{ marginTop: '1.5rem', padding: '1.5rem' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem' }}>
-              <FolderOpen size={18} /> {t('private.subpages')} ({currentPage.children.length})
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
-              {currentPage.children.map(child => (
-                <button
-                  key={child.id}
-                  onClick={() => openPage(child.id)}
-                  className="card"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    padding: '0.875rem 1rem', margin: 0, cursor: 'pointer',
-                    textAlign: 'left', transition: 'border-color 0.15s, box-shadow 0.15s',
-                  }}
-                >
-                  <FileText size={16} style={{ color: 'var(--c-primary)', flexShrink: 0 }} />
-                  <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{child.title}</span>
-                </button>
-              ))}
+        <PageHeader
+          title={currentPage.title}
+          icon={<FileText size={28} />}
+          subtitle={t('private.last_modified') + formatDate(currentPage.updated_at || '')}
+          actions={
+            <div className="btn-row">
+              <button className="btn btn-secondary" onClick={goBack}>
+                <ArrowLeft size={16} /> {t('private.back')}
+              </button>
+              <button className="btn btn-primary" onClick={() => startEdit(currentPage)}>
+                <Edit3 size={16} /> {t('private.edit_title')}
+              </button>
+              <button className="btn btn-secondary" onClick={() => openPublishDialog(currentPage.id)} title={t('private.publish_title')}>
+                <Send size={16} />
+              </button>
+              <button className="btn btn-danger" onClick={() => handleDelete(currentPage.id, currentPage.title)} title={t('private.delete_title')}>
+                <Trash2 size={16} />
+              </button>
             </div>
-            <button
-              className="btn btn-secondary"
-              style={{ marginTop: '1rem' }}
-              onClick={() => startNewPage(currentPage.id)}
-            >
-              <Plus size={16} /> {t('private.add_subpage')}
-            </button>
-          </div>
-        )}
+          }
+        />
 
-        {/* Keine Unterseiten: Button zum Erstellen */}
-        {(!currentPage.children || currentPage.children.length === 0) && (
-          <div style={{ marginTop: '1rem' }}>
-            <button className="btn btn-secondary" onClick={() => startNewPage(currentPage.id)}>
-              <Plus size={16} /> {t('private.add_subpage')}
-            </button>
+        <div className="content-body">
+          {/* Seiteninhalt */}
+          <div className="card ps-content-card">
+            <div
+              className="wiki-content"
+              dangerouslySetInnerHTML={{ __html: renderContent(currentPage.content, currentPage.content_type || 'markdown') }}
+            />
           </div>
-        )}
-      </div>
+
+          {/* Unterseiten */}
+          {currentPage.children && currentPage.children.length > 0 && (
+            <div className="card ps-subpages-card">
+              <h3 className="ps-subpages-heading">
+                <FolderOpen size={18} /> {t('private.subpages')} ({currentPage.children.length})
+              </h3>
+              <div className="ps-subpages-grid">
+                {currentPage.children.map(child => (
+                  <button key={child.id} onClick={() => openPage(child.id)} className="ps-subpage-item">
+                    <FileText size={16} className="ps-subpage-icon" />
+                    <span className="ps-subpage-title">{child.title}</span>
+                  </button>
+                ))}
+              </div>
+              <button className="btn btn-secondary ps-add-subpage" onClick={() => startNewPage(currentPage.id)}>
+                <Plus size={16} /> {t('private.add_subpage')}
+              </button>
+            </div>
+          )}
+
+          {/* Keine Unterseiten: Button zum Erstellen */}
+          {(!currentPage.children || currentPage.children.length === 0) && (
+            <div className="ps-add-subpage-wrap">
+              <button className="btn btn-secondary" onClick={() => startNewPage(currentPage.id)}>
+                <Plus size={16} /> {t('private.add_subpage')}
+              </button>
+            </div>
+          )}
+        </div>
+      </>
     );
   }
 
@@ -447,42 +436,27 @@ export default function PrivateSpacePage() {
     const children = childMap.get(page.id) || [];
     return (
       <div key={page.id}>
-        <div
-          style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '0.75rem 0', paddingLeft: `${depth * 1.5}rem`,
-            borderBottom: '1px solid var(--c-border)',
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <button
-              onClick={() => openPage(page.id)}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: 'var(--c-text)', fontWeight: 500, display: 'flex',
-                alignItems: 'center', gap: '0.5rem', padding: 0, fontSize: '0.95rem',
-              }}
-            >
-              {children.length > 0 ? <FolderOpen size={14} style={{ color: 'var(--c-primary)' }} /> : <FileText size={14} />}
-              {page.title}
+        <div className="ps-page-row" style={{ paddingLeft: `${depth * 1.5 + 1}rem` }}>
+          <div className="ps-page-info">
+            <button onClick={() => openPage(page.id)} className="ps-page-link">
+              {children.length > 0 ? <FolderOpen size={16} className="ps-page-icon folder" /> : <FileText size={16} className="ps-page-icon" />}
+              <span className="ps-page-title">{page.title}</span>
               {children.length > 0 && (
-                <span style={{ fontSize: '0.75rem', color: 'var(--c-text-secondary)' }}>
-                  ({children.length})
-                </span>
+                <span className="ps-page-count">({children.length})</span>
               )}
             </button>
-            <div style={{ fontSize: '0.75rem', color: 'var(--c-text-secondary)', marginTop: '0.2rem', paddingLeft: '1.5rem' }}>
-              {t('private.last_modified')}{new Date(page.updated_at || '').toLocaleDateString(language === 'de' ? 'de-DE' : 'en-US')}
+            <div className="ps-page-meta">
+              <Clock size={12} /> {formatDate(page.updated_at || '')}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
-            <button className="btn btn-sm btn-secondary" onClick={() => startEdit(page)} title={t('private.edit_title')}>
+          <div className="ps-page-actions">
+            <button className="icon-btn" onClick={() => startEdit(page)} title={t('private.edit_title')}>
               <Edit3 size={14} />
             </button>
-            <button className="btn btn-sm btn-secondary" onClick={() => openPublishDialog(page.id)} title={t('private.publish_title')}>
+            <button className="icon-btn" onClick={() => openPublishDialog(page.id)} title={t('private.publish_title')}>
               <Send size={14} />
             </button>
-            <button className="btn btn-sm btn-danger" onClick={() => handleDelete(page.id, page.title)} title={t('private.delete_title')}>
+            <button className="icon-btn danger" onClick={() => handleDelete(page.id, page.title)} title={t('private.delete_title')}>
               <Trash2 size={14} />
             </button>
           </div>
@@ -493,46 +467,48 @@ export default function PrivateSpacePage() {
   };
 
   return (
-    <div className="content-body">
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Lock size={28} /> {t('private.title')}
-          </h1>
-          <p className="page-subtitle">{t('private.subtitle')}</p>
-        </div>
-        <button className="btn btn-primary" onClick={() => startNewPage()}>
-          <Plus size={16} /> {t('private.new_page')}
-        </button>
-      </div>
-
-      {/* Seitenliste */}
-      {pages.length > 0 ? (
-        <div className="card">
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 1rem' }}>
-            <FileText size={18} /> {t('private.all_pages')} ({pages.length})
-          </h3>
-          {rootPages.map(page => renderPageItem(page))}
-          {/* Seiten ohne gueltige Eltern (verwaist) */}
-          {pages.filter(p => p.parent_id && !pages.find(pp => pp.id === p.parent_id) && !rootPages.includes(p))
-            .map(page => renderPageItem(page))}
-        </div>
-      ) : (
-        <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <Lock size={48} style={{ opacity: 0.3, marginBottom: '1rem' }} />
-          <h3>{t('private.empty_heading')}</h3>
-          <p style={{ color: 'var(--c-text-secondary)' }}>{t('private.empty_desc')}</p>
-          <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={() => startNewPage()}>
-            <Plus size={16} /> {t('private.empty_action')}
+    <>
+      <PageHeader
+        title={t('private.title')}
+        icon={<Lock size={28} />}
+        subtitle={t('private.subtitle')}
+        actions={
+          <button className="btn btn-primary" onClick={() => startNewPage()}>
+            <Plus size={16} /> {t('private.new_page')}
           </button>
-        </div>
-      )}
+        }
+      />
+
+      <div className="content-body">
+        {/* Seitenliste */}
+        {pages.length > 0 ? (
+          <div className="card ps-page-list">
+            <h3 className="ps-list-heading">
+              <FileText size={18} /> {t('private.all_pages')} ({pages.length})
+            </h3>
+            {rootPages.map(page => renderPageItem(page))}
+            {/* Seiten ohne gueltige Eltern (verwaist) */}
+            {pages.filter(p => p.parent_id && !pages.find(pp => pp.id === p.parent_id) && !rootPages.includes(p))
+              .map(page => renderPageItem(page))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={<Lock size={48} />}
+            title={t('private.empty_heading')}
+            description={t('private.empty_desc')}
+            action={
+              <button className="btn btn-primary" onClick={() => startNewPage()}>
+                <Plus size={16} /> {t('private.empty_action')}
+              </button>
+            }
+          />
+        )}
+      </div>
 
       {/* Veroeffentlichungs-Dialog */}
       {showPublishDialog && (
         <div className="modal-overlay" onClick={() => setShowPublishDialog(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+          <div className="modal ps-publish-modal" onClick={e => e.stopPropagation()}>
             <h2>{t('private.publish_heading')}</h2>
             <form onSubmit={handlePublish}>
               <div className="form-group">
@@ -555,7 +531,7 @@ export default function PrivateSpacePage() {
                 <label>{t('private.label_note')}</label>
                 <textarea value={publishNote} onChange={e => setPublishNote(e.target.value)} rows={3} placeholder={t('private.note_placeholder')} />
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowPublishDialog(false)}>{t('common.cancel')}</button>
                 <button type="submit" className="btn btn-primary" disabled={!targetSpaceId}>
                   <Send size={16} /> {t('common.submit')}
@@ -565,6 +541,6 @@ export default function PrivateSpacePage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

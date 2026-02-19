@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Save, X, Code, FileText, Tag } from 'lucide-react';
+import { Save, X, Code, FileText, Tag, AlertCircle } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { api, type WikiPage, type Tag as TagType } from '../api/client';
@@ -32,8 +32,33 @@ export default function EditPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [initialTitle, setInitialTitle] = useState('');
   const [initialContent, setInitialContent] = useState('');
+  const [pageUpdatedAt, setPageUpdatedAt] = useState<string>('');
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const [editorMode, setEditorMode] = useState<'wysiwyg' | 'raw'>('wysiwyg');
+  const [draftRecovered, setDraftRecovered] = useState(false);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const DRAFT_KEY = `nexora_draft_${id}`;
+
+  // Autosave to localStorage every 10 seconds when dirty
+  const saveDraft = useCallback(() => {
+    if (!id || !title) return;
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, content, contentType, savedAt: Date.now() }));
+    } catch { /* quota exceeded – ignore */ }
+  }, [id, title, content, contentType, DRAFT_KEY]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(saveDraft, 10000);
+    return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current); };
+  }, [isDirty, saveDraft]);
+
+  // Remove draft after successful save
+  const clearDraft = useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  }, [DRAFT_KEY]);
 
   const previewHtml = contentType === 'markdown'
     ? DOMPurify.sanitize(marked.parse(content || '') as string)
@@ -47,11 +72,30 @@ export default function EditPage() {
         setContent(page.content);
         setInitialTitle(page.title);
         setInitialContent(page.content);
+        setPageUpdatedAt(page.updated_at);
         const ct = page.content_type || 'markdown';
         setContentType(ct);
         setParentId(page.parent_id ?? null);
-        // Default to WYSIWYG for html, raw for markdown
         setEditorMode(ct === 'html' ? 'wysiwyg' : 'raw');
+
+        // Check for saved draft
+        try {
+          const raw = localStorage.getItem(`nexora_draft_${id}`);
+          if (raw) {
+            const draft = JSON.parse(raw);
+            // Only recover if draft is newer than last save (within 24h)
+            if (draft.savedAt && Date.now() - draft.savedAt < 24 * 60 * 60 * 1000) {
+              if (draft.content !== page.content || draft.title !== page.title) {
+                setDraftRecovered(true);
+                setTitle(draft.title || page.title);
+                setContent(draft.content || page.content);
+                if (draft.contentType) setContentType(draft.contentType);
+              }
+            } else {
+              localStorage.removeItem(`nexora_draft_${id}`);
+            }
+          }
+        } catch { /* ignore */ }
       }),
       api.getPages().then(setAllPages),
       api.getTags().then(setAllTags),
@@ -112,13 +156,19 @@ export default function EditPage() {
         content: content.trim(),
         parentId,
         contentType,
-      });
+        expectedUpdatedAt: pageUpdatedAt || undefined,
+      } as any);
       await api.setPageTags(id, selectedTagIds).catch(() => {});
       showToast(t('editpage.updated_toast'), 'success');
       setIsDirty(false);
+      clearDraft();
       navigate(`/pages/${id}`);
     } catch (err: any) {
-      showToast(err.message, 'error');
+      if (err.status === 409 && err.data?.error === 'conflict') {
+        showToast(t('editpage.conflict_error'), 'error');
+      } else {
+        showToast(err.message, 'error');
+      }
       setSaving(false);
     }
   };
@@ -154,6 +204,20 @@ export default function EditPage() {
 
       <div className="content-body">
         <form className="page-form" onSubmit={handleSubmit}>
+          {draftRecovered && (
+            <div className="settings-error" style={{ background: 'var(--c-warning-bg, #fef3cd)', borderColor: 'var(--c-warning, #f59e0b)', color: 'var(--c-warning-text, #856404)', marginBottom: '1rem' }}>
+              <AlertCircle size={14} />
+              <span>{t('editpage.draft_recovered')}</span>
+              <button type="button" className="btn btn-sm btn-secondary" style={{ marginLeft: 'auto' }}
+                onClick={() => {
+                  setTitle(initialTitle);
+                  setContent(initialContent);
+                  setDraftRecovered(false);
+                  clearDraft();
+                }}
+              >{t('editpage.draft_discard')}</button>
+            </div>
+          )}
           <div className="form-group">
             <label htmlFor="title">{t('editpage.label_title')}</label>
             <input
@@ -273,13 +337,14 @@ export default function EditPage() {
               <BlockEditor
                 content={content}
                 onChange={(html) => { setContent(html); }}
+                pageId={id}
               />
             </div>
           ) : (
             <div className="editor-grid">
               <div className="form-group">
                 <label htmlFor="content">{t('editpage.label_content', { type: contentType === 'markdown' ? 'Markdown' : 'HTML' })}</label>
-                <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} />
+                <EditorToolbar textareaRef={contentRef} contentType={contentType} onUpdate={setContent} pageId={id} />
                 <textarea
                   ref={contentRef}
                   id="content"

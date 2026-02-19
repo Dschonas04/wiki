@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const { DB_CONFIG, BCRYPT_ROUNDS } = require('./config');
+const logger = require('./logger');
 
 // Globaler Connection-Pool
 let pool = null;
@@ -49,10 +50,10 @@ function getPool() {
 async function connectWithRetry(maxRetries = 10, delay = 3000) {
   for (let i = 0; i < maxRetries; i++) {
     try {
-      console.log(`Datenbankverbindung wird hergestellt… (Versuch ${i + 1}/${maxRetries})`);
+      logger.info(`Datenbankverbindung wird hergestellt… (Versuch ${i + 1}/${maxRetries})`);
       const testPool = new Pool(DB_CONFIG);
       const client = await testPool.connect();
-      console.log('Verbunden mit PostgreSQL');
+      logger.info('Verbunden mit PostgreSQL');
 
       // ===========================================================
       // ===== 1. Benutzer-Tabelle =====
@@ -366,6 +367,16 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
         )
       `);
 
+      // Admin-Einstellungen (Key-Value für systemweite Konfiguration)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS admin_settings (
+          setting_key VARCHAR(100) PRIMARY KEY,
+          setting_value TEXT,
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
       // ===========================================================
       // ===== Migrationen für bestehende Datenbanken =====
       // ===========================================================
@@ -485,12 +496,12 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           ['admin', hash, 'Administrator', 'admin@nexora.local', 'admin', 'local', true]
         );
-        console.log('╔══════════════════════════════════════════════════╗');
-        console.log('║  NEXORA – STANDARD-ADMIN ERSTELLT                ║');
-        console.log('║  Benutzername: admin                             ║');
-        console.log(`║  Passwort: ${defaultPassword.padEnd(37)}║`);
-        console.log('║  ⚠  BITTE PASSWORT NACH ERSTEM LOGIN ÄNDERN!    ║');
-        console.log('╚══════════════════════════════════════════════════╝');
+        logger.info('╔══════════════════════════════════════════════════╗');
+        logger.info('║  NEXORA – STANDARD-ADMIN ERSTELLT                ║');
+        logger.info('║  Benutzername: admin                             ║');
+        logger.info(`║  Passwort: ${defaultPassword.padEnd(37)}║`);
+        logger.info('║  ⚠  BITTE PASSWORT NACH ERSTEM LOGIN ÄNDERN!    ║');
+        logger.info('╚══════════════════════════════════════════════════╝');
       }
 
       // ===== Standard-Organisation =====
@@ -502,7 +513,7 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
           `INSERT INTO organizations (name, slug, description, created_by) VALUES ($1, $2, $3, $4)`,
           ['Nexora', 'nexora', 'Standard-Organisation', adminId]
         );
-        console.log('Standard-Organisation "Nexora" erstellt.');
+        logger.info('Standard-Organisation "Nexora" erstellt.');
       }
 
       // ===== Privaten Bereich für alle Benutzer sicherstellen =====
@@ -572,22 +583,25 @@ async function connectWithRetry(maxRetries = 10, delay = 3000) {
             [tpl.name, tpl.description, tpl.content, tpl.icon, tpl.category]
           );
         }
-        console.log('Standard-Vorlagen erstellt.');
+        logger.info('Standard-Vorlagen erstellt.');
       }
 
-      console.log('Nexora Datenbankschema initialisiert');
+      // ===== Alte Login-Versuche aufräumen (>24h) =====
+      await client.query(`DELETE FROM login_attempts WHERE attempted_at < NOW() - INTERVAL '24 hours'`);
+
+      logger.info('Nexora Datenbankschema initialisiert');
       client.release();
       pool = testPool;
       return true;
     } catch (err) {
-      console.error(`DB-Verbindung fehlgeschlagen (${i + 1}/${maxRetries}):`, err.message);
+      logger.error({ err }, `DB-Verbindung fehlgeschlagen (${i + 1}/${maxRetries})`);
       if (i < maxRetries - 1) {
-        console.log(`Neuer Versuch in ${delay / 1000}s…`);
+        logger.info(`Neuer Versuch in ${delay / 1000}s…`);
         await new Promise(r => setTimeout(r, delay));
       }
     }
   }
-  console.error('Datenbankverbindung konnte nicht hergestellt werden');
+  logger.error('Datenbankverbindung konnte nicht hergestellt werden');
   return false;
 }
 

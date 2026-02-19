@@ -47,9 +47,9 @@ Browser :8080/:8443
    ▼
 ┌──────────┐  nexora-frontend  ┌──────────┐  nexora-backend  ┌──────────┐
 │  Nginx   │──────────────────▶│ Node.js  │─────────────────▶│ Postgres │
-│ Frontend │    reverse proxy  │ Backend  │    connection     │    DB    │
-│  :80/443 │                   │  :3000   │    pool           │  :5432   │
-└──────────┘                   └──────────┘                   └──────────┘
+│ Frontend │    reverse proxy  │ Backend  │    connection    │    DB    │
+│  :80/443 │                   │  :3000   │    pool          │  :5432   │
+└──────────┘                   └──────────┘                  └──────────┘
                                     │ (optional)
                                     ▼
                                ┌──────────┐
@@ -443,11 +443,47 @@ docker compose down -v
 - JWT secret must be ≥ 32 characters; generate with `openssl rand -base64 32`
 - All containers run as non-root users
 - Backend and database are on an **internal Docker network** (not exposed to host)
-- Frontend HTML is sanitized twice: DOMPurify (client) + regex-based sanitization (server)
+- Frontend HTML is sanitized twice: DOMPurify (client) + sanitize-html library (server)
 - Rate limiting on auth (20/15min), writes (60/15min), general (300/15min)
 - Nginx adds HSTS, X-Frame-Options, X-Content-Type-Options headers
 - Resource limits (CPU/memory) configured per container in docker-compose.yml
 - Structured JSON logging (pino) with request ID correlation
+
+## Behobene Bugs (Bug-Tracker)
+
+| #  | Schweregrad | Kategorie | Beschreibung | Datei(en) |
+|----|-------------|-----------|--------------|-----------|
+| 1  | 🔴 Kritisch | RBAC | `user`-Rolle fehlte `pages.edit`-Permission – Benutzer konnten Seiten erstellen, aber nicht bearbeiten | `backend/src/config.js` |
+| 2  | 🔴 Kritisch | XSS | Such-Snippets wurden mit `dangerouslySetInnerHTML` ohne DOMPurify gerendert – XSS-Injection möglich | `frontend/src/components/Layout.tsx` |
+| 3  | 🟠 Hoch | Feature-Bug | E-Mail-Benachrichtigungen (`notifyComment`, `notifyPublishStatus`) definiert aber nie aufgerufen | `backend/src/routes/comments.js`, `publishing.js` |
+| 4  | 🔴 Kritisch | Security | Server-seitige HTML-Sanitisierung nutzte Regex – umgehbar via `<svg/onload>`, verschachtelte Tags | `backend/src/helpers/validators.js` |
+| 5  | 🟠 Hoch | Security | Admin-Einstellungen akzeptierten beliebige Keys – kein Allowlist | `backend/src/routes/settings.js` |
+| 6  | 🟡 Mittel | Data Growth | `login_attempts`-Tabelle wuchs unbegrenzt – kein Cleanup-Mechanismus | `backend/src/database.js` |
+| 7  | 🟠 Hoch | Logic | Workflow-Statusübergänge (`VALID_TRANSITIONS`) definiert aber nie geprüft | `backend/src/routes/publishing.js` |
+| 8  | 🟡 Mittel | Logging | Inkonsistentes Logging: `console.log`/`console.error` statt strukturiertem pino-Logger | `backend/server.js`, `database.js` |
+| 9  | 🔴 Kritisch | Auth-Bypass | `PUT /pages/:id/visibility` umging den gesamten Publishing-Workflow – jeder Owner konnte direkt veröffentlichen | `backend/src/routes/pages.js` |
+| 10 | 🔴 Kritisch | Logic | `request-changes` ließ Publish-Request auf `pending` – Workflow-Deadlock, Autor konnte nicht erneut einreichen | `backend/src/routes/publishing.js` |
+| 11 | 🟠 Hoch | Security | HTML-Injection in E-Mail-Benachrichtigungen – Benutzereingaben unescaped in HTML-Templates interpoliert | `backend/src/helpers/email.js` |
+| 12 | 🟡 Mittel | Crash | `GET /auth/me` fehlte Pool-Null-Check – Crash bei DB-Disconnect | `backend/src/routes/auth.js` |
+| 13 | 🟡 Mittel | Auth-Bypass | `POST /spaces` fehlte `requirePermission('spaces.create')` – jeder User konnte Spaces erstellen | `backend/src/routes/spaces.js` |
+| 14 | 🟡 Mittel | Security | Attachment-Löschung ohne `path.basename()` – potenzieller Path-Traversal bei DB-Kompromittierung | `backend/src/routes/attachments.js` |
+
+### Fix-Details
+
+- **Bug 1**: `pages.edit` und `pages.delete` zur `user`-Permission hinzugefügt
+- **Bug 2**: DOMPurify mit Tag-Allowlist (`<mark>`, `<b>`, `<em>`, `<strong>`) für Such-Snippets
+- **Bug 3**: `notifyComment()` in Comments-Route und `notifyPublishStatus()` in Publishing-Route eingebunden
+- **Bug 4**: Regex-Sanitisierung durch `sanitize-html`-Bibliothek ersetzt (DOM-basiert, strikte Allowlist)
+- **Bug 5**: `ALLOWED_ADMIN_KEYS`-Allowlist – unbekannte Schlüssel werden mit HTTP 400 abgelehnt
+- **Bug 6**: Automatisches Cleanup: Login-Versuche >24h werden beim DB-Start gelöscht
+- **Bug 7**: `isValidTransition()`-Funktion – Validierung in approve/reject/request-changes-Endpoints
+- **Bug 8**: Alle `console.log`/`console.error` durch strukturierten pino-Logger ersetzt
+- **Bug 9**: Nur Admins dürfen `published`/`approved`/`archived` direkt setzen; andere nutzen den Workflow
+- **Bug 10**: Publish-Request-Status wird auf `changes_requested` gesetzt (nicht mehr `pending`)
+- **Bug 11**: `escapeHtml()`-Funktion für alle Benutzereingaben in E-Mail-Templates
+- **Bug 12**: Pool-Null-Check hinzugefügt → HTTP 503 statt Crash
+- **Bug 13**: `requirePermission('spaces.create')` als Middleware hinzugefügt
+- **Bug 14**: `path.basename()` konsistent in Download- und Lösch-Route
 
 ## Author
 

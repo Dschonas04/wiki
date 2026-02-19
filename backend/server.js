@@ -125,7 +125,7 @@ app.use('/api', (req, res) => {
 // Gibt dem Client eine generische Fehlermeldung zurueck, ohne interne Details preiszugeben.
 // ============================================================
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
+  logger.error({ err, method: req.method, url: req.url }, 'Unhandled error');
   res.status(500).json({ error: 'Internal server error' });
 });
 

@@ -16,12 +16,12 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 
 import {
   Home,
   FileText,
   Activity,
-  BookOpen,
   Menu,
   X,
   Users,
@@ -167,7 +167,7 @@ export default function Layout() {
         <div className="sidebar-brand">
           <NavLink to="/" className="brand-link" onClick={closeSidebar}>
             <div className="brand-icon">
-              <BookOpen size={22} />
+              <img src="/logo.png" alt="Nexora" className="brand-logo-img" />
             </div>
             <span className="brand-text">Nexora</span>
           </NavLink>
@@ -219,7 +219,12 @@ export default function Layout() {
                       }}
                     >
                       <FileText size={14} />
-                      <span className="search-result-title">{page.title}</span>
+                      <div className="search-result-content">
+                        <span className="search-result-title" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize((page as any).title_highlight || page.title, { ALLOWED_TAGS: ['mark', 'b', 'em', 'strong'] }) }} />
+                        {(page as any).snippet && (
+                          <span className="search-result-snippet" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize((page as any).snippet, { ALLOWED_TAGS: ['mark', 'b', 'em', 'strong'] }) }} />
+                        )}
+                      </div>
                     </button>
                   ))}
                   <button

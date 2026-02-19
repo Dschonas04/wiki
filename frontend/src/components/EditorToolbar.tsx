@@ -19,11 +19,20 @@ import type { LucideIcon } from 'lucide-react';
 // Editor-Werkzeugleisten-Icons
 import {
   Bold, Italic, Link as LinkIcon, Image, List, ListOrdered,
-  Code, Quote, Minus, Heading1, Heading2, Heading3,
+  Code, Quote, Minus, Heading1, Heading2, Heading3, Upload,
 } from 'lucide-react';
 
 // Internationalisierung
 import { useLanguage } from '../context/LanguageContext';
+
+// API-Client für Bild-Upload
+import { api } from '../api/client';
+
+// Toast-Benachrichtigungen
+import { useToast } from '../context/ToastContext';
+
+// React ref und state
+import { useRef, useState } from 'react';
 
 /**
  * Schnittstelle für die EditorToolbar-Eigenschaften
@@ -35,10 +44,15 @@ interface EditorToolbarProps {
   contentType: 'markdown' | 'html';
   /** Callback-Funktion, die bei Textänderungen aufgerufen wird */
   onUpdate: (value: string) => void;
+  /** Optionale Seiten-ID für Bild-Upload via Attachment-API */
+  pageId?: number | string;
 }
 
-export default function EditorToolbar({ textareaRef, contentType, onUpdate }: EditorToolbarProps) {
+export default function EditorToolbar({ textareaRef, contentType, onUpdate, pageId }: EditorToolbarProps) {
   const { t } = useLanguage();
+  const { showToast } = useToast();
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   /**
    * Umschließt den ausgewählten Text mit Vor- und Nachzeichen.
@@ -102,6 +116,34 @@ export default function EditorToolbar({ textareaRef, contentType, onUpdate }: Ed
   // Kurzform: Prüft ob der Inhaltstyp Markdown ist
   const md = contentType === 'markdown';
 
+  /**
+   * Lädt ein Bild als Attachment hoch und fügt die URL in den Editor ein.
+   */
+  const handleImageUpload = async (file: File) => {
+    if (!pageId) return;
+    if (!file.type.startsWith('image/')) {
+      showToast(t('toolbar.image_not_image'), 'error');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      showToast(t('toolbar.image_too_large'), 'error');
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const att = await api.uploadAttachment(pageId, file);
+      const url = api.downloadAttachmentUrl(att.id);
+      const alt = file.name.replace(/\.[^.]+$/, '');
+      insertBlock(md ? `![${alt}](${url})\n` : `<img src="${url}" alt="${alt}" style="max-width:100%" />\n`);
+      showToast(t('toolbar.image_uploaded'), 'success');
+    } catch (err: any) {
+      showToast(err.message || t('toolbar.image_upload_error'), 'error');
+    } finally {
+      setUploadingImage(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  };
+
   // Definition aller Werkzeugleisten-Aktionen mit Icons, Titeln und zugehörigen Funktionen
   // Trenner werden mit { sep: true } dargestellt
   const actions: ({ icon?: LucideIcon; text?: string; title: string; action: () => void } | { sep: true })[] = [
@@ -135,8 +177,14 @@ export default function EditorToolbar({ textareaRef, contentType, onUpdate }: Ed
     },
     {
       icon: Image, title: t('toolbar.image'), action: () => {
-        const url = prompt(t('toolbar.image_prompt'));
-        if (url) insertBlock(md ? `![Bild](${url})\n` : `<img src="${url}" alt="Bild" />\n`);
+        if (pageId) {
+          // Bei vorhandener pageId: Datei-Upload verwenden
+          imageInputRef.current?.click();
+        } else {
+          // Fallback: URL-Eingabe
+          const url = prompt(t('toolbar.image_prompt'));
+          if (url) insertBlock(md ? `![Bild](${url})\n` : `<img src="${url}" alt="Bild" />\n`);
+        }
       },
     },
     { icon: Minus, title: t('toolbar.hr'), action: () => insertBlock(md ? '\n---\n' : '\n<hr />\n') },
@@ -196,6 +244,35 @@ export default function EditorToolbar({ textareaRef, contentType, onUpdate }: Ed
           </button>
         ),
       )}
+
+      {/* Bild-Upload-Button (nur wenn pageId vorhanden) */}
+      {pageId && (
+        <>
+          <div className="editor-toolbar-sep" />
+          <button
+            type="button"
+            className="editor-toolbar-btn"
+            onClick={() => imageInputRef.current?.click()}
+            title={t('toolbar.image_upload')}
+            disabled={uploadingImage}
+          >
+            <Upload size={15} strokeWidth={2} />
+            {uploadingImage && <span className="toolbar-uploading">…</span>}
+          </button>
+        </>
+      )}
+
+      {/* Verstecktes Datei-Input für Bild-Upload */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleImageUpload(file);
+        }}
+      />
     </div>
   );
 }

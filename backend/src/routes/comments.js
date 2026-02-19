@@ -13,6 +13,7 @@
 const express = require('express');
 const router = express.Router();
 const { getPool } = require('../database');
+const { notifyComment } = require('../helpers/email');
 const { authenticate } = require('../middleware/auth');
 const { writeLimiter } = require('../middleware/security');
 const { auditLog } = require('../helpers/audit');
@@ -118,6 +119,9 @@ router.post('/pages/:pageId/comments', authenticate, writeLimiter, async (req, r
     }
 
     await auditLog(req.user.id, req.user.username, 'comment.create', 'comment', result.rows[0].id, { pageId }, getIp(req));
+
+    // E-Mail-Benachrichtigung an Seitenersteller senden
+    notifyComment(pageId, req.user.display_name || req.user.username, content).catch(() => {});
 
     res.status(201).json(comment.rows[0]);
   } catch (err) {

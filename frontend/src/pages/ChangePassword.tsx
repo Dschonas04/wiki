@@ -78,7 +78,7 @@ export default function ChangePassword({ forced = false }: { forced?: boolean })
       <div className={forced ? 'login-card' : 'content-body'} style={forced ? {} : { maxWidth: 480 }}>
         {forced ? (
           <div className="login-header">
-            <div className="login-logo"><Lock size={32} /></div>
+            <div className="login-logo"><img src="/logo.png" alt="Nexora" className="login-logo-img" /></div>
             <h1>{t('changepw.forced_title')}</h1>
             <p>{t('changepw.forced_desc')}</p>
           </div>

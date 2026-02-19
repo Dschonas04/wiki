@@ -29,6 +29,7 @@ const { writeLimiter } = require('../middleware/security');
 const { getPool } = require('../database');
 const { auditLog } = require('../helpers/audit');
 const { getIp } = require('../helpers/utils');
+const { notifyPublishStatus } = require('../helpers/email');
 const logger = require('../logger');
 
 const router = Router();
@@ -36,12 +37,23 @@ const router = Router();
 // ===== Gültige Statusübergänge =====
 const VALID_TRANSITIONS = {
   draft: ['in_review'],
-  in_review: ['approved', 'changes_requested', 'draft'], // draft = abgelehnt/zurückgezogen
+  in_review: ['approved', 'changes_requested', 'draft', 'published'], // published via approve-Shortcut
   changes_requested: ['in_review', 'draft'],
   approved: ['published'],
   published: ['archived', 'draft'], // draft = zurückgezogen zur Überarbeitung
   archived: ['draft'],
 };
+
+/**
+ * Prüft ob ein Workflow-Statusübergang gültig ist.
+ * @param {string} from - Aktueller Status
+ * @param {string} to - Zielstatus
+ * @returns {boolean}
+ */
+function isValidTransition(from, to) {
+  const allowed = VALID_TRANSITIONS[from];
+  return Array.isArray(allowed) && allowed.includes(to);
+}
 
 /**
  * Hilfsfunktion: Prüft ob ein Benutzer ein Reviewer ist (Auditor, Admin, oder Space-Reviewer/Owner)
@@ -230,6 +242,12 @@ router.post('/publishing/requests/:id/approve', authenticate, writeLimiter, asyn
       return res.status(400).json({ error: 'Request is not pending' });
     }
 
+    // Workflow-Status der Seite validieren
+    const pageCheck = await pool.query('SELECT workflow_status FROM wiki_pages WHERE id = $1', [prData.page_id]);
+    if (pageCheck.rows.length > 0 && !isValidTransition(pageCheck.rows[0].workflow_status, 'published')) {
+      return res.status(400).json({ error: `Invalid transition: ${pageCheck.rows[0].workflow_status} → published` });
+    }
+
     // Prüfe Reviewer-Berechtigung
     if (!(await isReviewer(req.user.id, req.user.global_role, prData.target_space_id))) {
       return res.status(403).json({ error: 'Only reviewers can approve requests' });
@@ -271,6 +289,8 @@ router.post('/publishing/requests/:id/approve', authenticate, writeLimiter, asyn
     await auditLog(req.user.id, req.user.username, 'publish_approve', 'wiki_page', prData.page_id,
       { requestId: id, targetSpaceId: prData.target_space_id }, getIp(req));
 
+    notifyPublishStatus(id, 'approved', comment?.trim() || null).catch(() => {});
+
     res.json({ message: 'Publish request approved. Page is now published.' });
   } catch (err) {
     logger.error({ err }, 'Fehler beim Genehmigen');
@@ -290,6 +310,12 @@ router.post('/publishing/requests/:id/reject', authenticate, writeLimiter, async
 
     const prData = pr.rows[0];
     if (prData.status !== 'pending') return res.status(400).json({ error: 'Request is not pending' });
+
+    // Workflow-Status der Seite validieren
+    const pageCheck = await pool.query('SELECT workflow_status FROM wiki_pages WHERE id = $1', [prData.page_id]);
+    if (pageCheck.rows.length > 0 && !isValidTransition(pageCheck.rows[0].workflow_status, 'draft')) {
+      return res.status(400).json({ error: `Invalid transition: ${pageCheck.rows[0].workflow_status} → draft` });
+    }
 
     if (!(await isReviewer(req.user.id, req.user.global_role, prData.target_space_id))) {
       return res.status(403).json({ error: 'Only reviewers can reject requests' });
@@ -323,6 +349,8 @@ router.post('/publishing/requests/:id/reject', authenticate, writeLimiter, async
     await auditLog(req.user.id, req.user.username, 'publish_reject', 'wiki_page', prData.page_id,
       { requestId: id, comment: comment.trim() }, getIp(req));
 
+    notifyPublishStatus(id, 'rejected', comment.trim()).catch(() => {});
+
     res.json({ message: 'Publish request rejected' });
   } catch (err) {
     logger.error({ err }, 'Fehler beim Ablehnen');
@@ -343,6 +371,12 @@ router.post('/publishing/requests/:id/request-changes', authenticate, writeLimit
     const prData = pr.rows[0];
     if (prData.status !== 'pending') return res.status(400).json({ error: 'Request is not pending' });
 
+    // Workflow-Status der Seite validieren
+    const pageCheck = await pool.query('SELECT workflow_status FROM wiki_pages WHERE id = $1', [prData.page_id]);
+    if (pageCheck.rows.length > 0 && !isValidTransition(pageCheck.rows[0].workflow_status, 'changes_requested')) {
+      return res.status(400).json({ error: `Invalid transition: ${pageCheck.rows[0].workflow_status} → changes_requested` });
+    }
+
     if (!(await isReviewer(req.user.id, req.user.global_role, prData.target_space_id))) {
       return res.status(403).json({ error: 'Only reviewers can request changes' });
     }
@@ -355,7 +389,7 @@ router.post('/publishing/requests/:id/request-changes', authenticate, writeLimit
       await client.query('BEGIN');
 
       await client.query(
-        `UPDATE publish_requests SET review_comment = $1, reviewed_by = $2 WHERE id = $3`,
+        `UPDATE publish_requests SET status = 'changes_requested', review_comment = $1, reviewed_by = $2, reviewed_at = NOW() WHERE id = $3`,
         [comment.trim(), req.user.id, id]
       );
 
@@ -374,6 +408,8 @@ router.post('/publishing/requests/:id/request-changes', authenticate, writeLimit
 
     await auditLog(req.user.id, req.user.username, 'publish_changes_requested', 'wiki_page', prData.page_id,
       { requestId: id, comment: comment.trim() }, getIp(req));
+
+    notifyPublishStatus(id, 'changes_requested', comment.trim()).catch(() => {});
 
     res.json({ message: 'Changes requested' });
   } catch (err) {

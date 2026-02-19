@@ -17,16 +17,18 @@ interface PageHeaderProps {
   title: string;
   /** Optionaler Untertitel unterhalb des Titels */
   subtitle?: string;
+  /** Optionales Icon neben dem Titel */
+  icon?: ReactNode;
   /** Optionale Aktionselemente (z.B. Schaltflächen) im rechten Bereich */
   actions?: ReactNode;
 }
 
-export default function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
+export default function PageHeader({ title, subtitle, icon, actions }: PageHeaderProps) {
   return (
     <div className="page-header">
       {/* Textbereich: Titel und optionaler Untertitel */}
       <div className="page-header-text">
-        <h1>{title}</h1>
+        <h1>{icon && <span className="page-header-icon">{icon}</span>}{title}</h1>
         {subtitle && <p>{subtitle}</p>}
       </div>
       {/* Aktionsbereich: Wird nur gerendert, wenn Aktionen übergeben wurden */}

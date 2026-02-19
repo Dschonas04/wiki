@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { BookOpen, LogIn, AlertCircle } from 'lucide-react';
+import { LogIn, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -33,7 +33,7 @@ export default function Login() {
       <div className="login-card">
         <div className="login-header">
           <div className="login-logo">
-            <BookOpen size={32} />
+            <img src="/logo.png" alt="Nexora" className="login-logo-img" />
           </div>
           <h1>Nexora</h1>
           <p>{t('login.subtitle')}</p>

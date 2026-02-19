@@ -178,6 +178,7 @@ router.post('/auth/logout', authenticate, async (req, res) => {
 router.get('/auth/me', authenticate, async (req, res) => {
   try {
     const pool = getPool();
+    if (!pool) return res.status(503).json({ error: 'Database not connected' });
 
     // Benutzerdaten aus der Datenbank laden (nur ausgewählte Felder, kein Passwort-Hash)
     const result = await pool.query(

@@ -396,30 +396,33 @@ export default function PageView() {
           </div>
         )}
 
-        <div className={`page-layout ${showToc ? 'with-toc' : ''}`}>
-          {/* Table of Contents */}
-          {showToc && tocItems.length > 0 && (
-            <nav className="toc-sidebar">
-              <h4 className="toc-title">{t('pageview.toc_title')}</h4>
-              <ul className="toc-list">
-                {tocItems.map(item => (
-                  <li key={item.id} className={`toc-item toc-level-${item.level}`}>
-                    <a href={`#${item.id}`} onClick={e => {
-                      e.preventDefault();
-                      document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }}>{item.text}</a>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          )}
+        <div className="page-content-with-comments">
+          {/* Left: Main Content */}
+          <div className="page-main-column">
+            <div className={`page-layout ${showToc ? 'with-toc' : ''}`}>
+              {/* Table of Contents */}
+              {showToc && tocItems.length > 0 && (
+                <nav className="toc-sidebar">
+                  <h4 className="toc-title">{t('pageview.toc_title')}</h4>
+                  <ul className="toc-list">
+                    {tocItems.map(item => (
+                      <li key={item.id} className={`toc-item toc-level-${item.level}`}>
+                        <a href={`#${item.id}`} onClick={e => {
+                          e.preventDefault();
+                          document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }}>{item.text}</a>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              )}
 
-          <div className="page-layout-content">
-            <div className="card page-view-card">
-              <div className="page-view-content markdown-body" dangerouslySetInnerHTML={{ __html: htmlWithIds }} />
+              <div className="page-layout-content">
+                <div className="card page-view-card">
+                  <div className="page-view-content markdown-body" dangerouslySetInnerHTML={{ __html: htmlWithIds }} />
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
         {/* Unterseiten */}
         {page.children && page.children.length > 0 && (
@@ -535,9 +538,13 @@ export default function PageView() {
             <span>{t('pageview.back')}</span>
           </Link>
         </div>
+          </div>
 
-        {/* Kommentarbereich */}
-        {page && <CommentSection pageId={page.id} />}
+          {/* Right: Comment Sidebar */}
+          <aside className="comment-sidebar">
+            {page && <CommentSection pageId={page.id} />}
+          </aside>
+        </div>
       </div>
 
       {confirmDelete && page && (

@@ -594,6 +594,13 @@ export const api = {
   // ===== Einstellungen =====
   getTheme: () => request<{ theme: string }>('GET', '/settings/theme'),
   setTheme: (theme: string) => request<{ theme: string }>('PUT', '/settings/theme', { theme }),
+  updateProfile: (displayName: string) =>
+    request<any>('PUT', '/settings/profile', { displayName }),
+  getAdminSettings: () => request<Record<string, string>>('GET', '/settings/admin'),
+  saveAdminSettings: (settings: Record<string, string>) =>
+    request<{ message: string }>('PUT', '/settings/admin', { settings }),
+  testEmail: () => request<{ success: boolean; error?: string }>('POST', '/settings/admin/test-email'),
+  triggerBackup: () => request<{ message: string; timestamp: string }>('POST', '/settings/admin/backup'),
 
   // ===== Wissensgraph =====
   getGraph: () => request<GraphData>('GET', '/graph'),

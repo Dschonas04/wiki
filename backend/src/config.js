@@ -124,9 +124,9 @@ const PERMISSIONS = {
   ],
 
   // Standardbenutzer: Grundlegender Zugriff – Seiten lesen (sofern berechtigt),
-  // Seiten im eigenen privaten Bereich erstellen und verwalten
+  // Seiten im eigenen privaten Bereich erstellen, bearbeiten und verwalten
   user: [
-    'pages.read', 'pages.create',
+    'pages.read', 'pages.create', 'pages.edit', 'pages.delete',
     'spaces.read',
     'folders.read',
     'private.manage',

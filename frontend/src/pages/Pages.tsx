@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User, Download, ChevronRight, Upload, Tag as TagIcon, X } from 'lucide-react';
+import { FileText, PlusCircle, Clock, Edit3, Trash2, Search, User, Download, ChevronRight, Upload, Tag as TagIcon, X, CheckSquare, Square, MinusSquare } from 'lucide-react';
 import { api, type WikiPage, type Tag } from '../api/client';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
@@ -20,12 +20,50 @@ export default function Pages() {
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; title: string } | null>(null);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [activeTagId, setActiveTagId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const { showToast } = useToast();
   const { hasPermission } = useAuth();
   const { t } = useLanguage();
   const canCreate = hasPermission('pages.create');
   const canEdit = hasPermission('pages.edit');
   const canDelete = hasPermission('pages.delete');
+
+  // === Bulk selection helpers ===
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === pages.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pages.map(p => p.id)));
+    }
+  }, [selectedIds.size, pages]);
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    let deleted = 0;
+    for (const id of selectedIds) {
+      try {
+        await api.deletePage(id);
+        deleted++;
+      } catch {}
+    }
+    setPages(prev => prev.filter(p => !selectedIds.has(p.id)));
+    setSelectedIds(new Set());
+    setConfirmBulkDelete(false);
+    setBulkDeleting(false);
+    showToast(t('pages.bulk_deleted_toast', { count: deleted }), 'success');
+  };
 
   // Load available tags once
   useEffect(() => {
@@ -182,6 +220,24 @@ export default function Pages() {
           </div>
         )}
 
+        {/* Bulk Action Bar */}
+        {canDelete && selectedIds.size > 0 && (
+          <div className="bulk-action-bar">
+            <div className="bulk-action-info">
+              <CheckSquare size={18} />
+              <span>{t('pages.selected_count', { count: selectedIds.size })}</span>
+            </div>
+            <div className="bulk-action-buttons">
+              <button className="btn btn-secondary btn-sm" onClick={() => setSelectedIds(new Set())}>
+                <X size={14} /> {t('pages.deselect_all')}
+              </button>
+              <button className="btn btn-danger btn-sm" onClick={() => setConfirmBulkDelete(true)} disabled={bulkDeleting}>
+                <Trash2 size={14} /> {t('pages.bulk_delete')}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Pages List */}
         {filtered.length === 0 && !search ? (
           <EmptyState
@@ -203,13 +259,29 @@ export default function Pages() {
           />
         ) : (
           <div className="pages-grid">
+            {/* Select All */}
+            {canDelete && filtered.length > 1 && (
+              <div className="pages-select-all">
+                <button className="page-checkbox" onClick={toggleSelectAll} title={selectedIds.size === filtered.length ? t('pages.deselect_all') : t('pages.select_all')}>
+                  {selectedIds.size === filtered.length ? <CheckSquare size={18} /> : selectedIds.size > 0 ? <MinusSquare size={18} /> : <Square size={18} />}
+                </button>
+                <span className="pages-select-label">
+                  {selectedIds.size === filtered.length ? t('pages.deselect_all') : t('pages.select_all')}
+                </span>
+              </div>
+            )}
             {filtered.map((page, i) => (
               <div
-                className="page-card"
+                className={`page-card ${selectedIds.has(page.id) ? 'selected' : ''}`}
                 key={page.id}
                 style={{ animationDelay: `${i * 0.04}s` }}
               >
                 <div className="page-card-header">
+                  {canDelete && (
+                    <button className="page-checkbox" onClick={() => toggleSelect(page.id)} title={t('pages.toggle_select')}>
+                      {selectedIds.has(page.id) ? <CheckSquare size={18} /> : <Square size={18} />}
+                    </button>
+                  )}
                   <Link to={`/pages/${page.id}`} className="page-card-title">
                     <FileText size={18} className="page-card-icon" />
                     {page.parent_id && pageMap.get(page.parent_id) && (
@@ -293,6 +365,17 @@ export default function Pages() {
           variant="danger"
           onConfirm={() => handleDelete(confirmDelete.id, confirmDelete.title)}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {confirmBulkDelete && (
+        <ConfirmDialog
+          title={t('pages.bulk_delete_title')}
+          message={t('pages.bulk_delete_message', { count: selectedIds.size })}
+          confirmLabel={bulkDeleting ? t('pages.bulk_deleting') : t('pages.bulk_delete_confirm')}
+          variant="danger"
+          onConfirm={handleBulkDelete}
+          onCancel={() => setConfirmBulkDelete(false)}
         />
       )}
     </>

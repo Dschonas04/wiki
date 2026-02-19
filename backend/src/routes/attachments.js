@@ -249,8 +249,8 @@ router.delete('/attachments/:id', authenticate, requirePermission('pages.edit'),
     // Anhang aus der Datenbank löschen
     await pool.query('DELETE FROM wiki_attachments WHERE id = $1', [id]);
 
-    // Datei vom Dateisystem entfernen (Fehler beim Löschen werden ignoriert)
-    const filePath = path.join(UPLOAD_DIR, att.filename);
+    // Datei vom Dateisystem entfernen (path.basename verhindert Path-Traversal)
+    const filePath = path.join(UPLOAD_DIR, path.basename(att.filename));
     fs.unlink(filePath, () => {});
 
     // Löschung im Audit-Log protokollieren

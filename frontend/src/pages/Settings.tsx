@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { Settings as SettingsIcon, Palette, Lock, Tag, Trash2, AlertCircle, CheckCircle, User, Github, ExternalLink, Info, Globe } from 'lucide-react';
+import { useState, useEffect, type FormEvent } from 'react';
+import { Settings as SettingsIcon, Palette, Lock, Tag, Trash2, AlertCircle, CheckCircle, User, Github, ExternalLink, Info, Globe, Mail, Database, Edit3, Save, Shield } from 'lucide-react';
 import { api, type Tag as TagType } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -9,11 +9,16 @@ import PageHeader from '../components/PageHeader';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function Settings() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, isAdmin } = useAuth();
   const { showToast } = useToast();
   const { theme, setTheme, themes } = useTheme();
   const { t, language, setLanguage } = useLanguage();
   const isLdap = user?.authSource === 'ldap';
+
+  // Profile editing
+  const [editingName, setEditingName] = useState(false);
+  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [savingName, setSavingName] = useState(false);
 
   // Password
   const [currentPassword, setCurrentPassword] = useState('');
@@ -27,6 +32,13 @@ export default function Settings() {
   const [tagsLoaded, setTagsLoaded] = useState(false);
   const [deleteTagConfirm, setDeleteTagConfirm] = useState<TagType | null>(null);
 
+  // Admin settings
+  const [adminSettings, setAdminSettings] = useState<Record<string, string>>({});
+  const [adminLoaded, setAdminLoaded] = useState(false);
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [backupRunning, setBackupRunning] = useState(false);
+
   const loadTags = async () => {
     if (tagsLoaded) return;
     try {
@@ -36,6 +48,76 @@ export default function Settings() {
     } catch {
       showToast(t('settings.tags_load_error'), 'error');
     }
+  };
+
+  // Load admin settings on mount if admin
+  useEffect(() => {
+    if (isAdmin && !adminLoaded) {
+      api.getAdminSettings().then(data => {
+        setAdminSettings(data);
+        setAdminLoaded(true);
+      }).catch(() => {});
+    }
+  }, [isAdmin]);
+
+  const handleSaveDisplayName = async () => {
+    if (!displayName.trim()) return;
+    setSavingName(true);
+    try {
+      await api.updateProfile(displayName.trim());
+      await refreshUser();
+      setEditingName(false);
+      showToast(t('settings.profile_updated'), 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleSaveAdminSettings = async () => {
+    setAdminSaving(true);
+    try {
+      await api.saveAdminSettings(adminSettings);
+      showToast(t('settings.admin_saved'), 'success');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setAdminSaving(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    setEmailTesting(true);
+    try {
+      const result = await api.testEmail();
+      if (result.success) {
+        showToast(t('settings.email_test_ok'), 'success');
+      } else {
+        showToast(t('settings.email_test_fail') + ': ' + (result.error || ''), 'error');
+      }
+    } catch (err: any) {
+      showToast(t('settings.email_test_fail') + ': ' + err.message, 'error');
+    } finally {
+      setEmailTesting(false);
+    }
+  };
+
+  const handleBackup = async () => {
+    setBackupRunning(true);
+    try {
+      const result = await api.triggerBackup();
+      showToast(t('settings.backup_done') + ' (' + new Date(result.timestamp).toLocaleString() + ')', 'success');
+      setAdminSettings(prev => ({ ...prev, 'backup.last_run': result.timestamp }));
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setBackupRunning(false);
+    }
+  };
+
+  const updateAdminSetting = (key: string, value: string) => {
+    setAdminSettings(prev => ({ ...prev, [key]: value }));
   };
 
   const handleDeleteTag = async () => {
@@ -98,7 +180,29 @@ export default function Settings() {
                   </div>
                   <div className="settings-profile-row">
                     <span className="settings-label">{t('settings.label_displayname')}</span>
-                    <span className="settings-value">{user?.displayName || '—'}</span>
+                    {editingName ? (
+                      <span className="settings-value" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <input
+                          type="text"
+                          value={displayName}
+                          onChange={e => setDisplayName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleSaveDisplayName(); if (e.key === 'Escape') setEditingName(false); }}
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem', width: '200px' }}
+                          autoFocus
+                          disabled={savingName}
+                        />
+                        <button className="icon-btn" title={t('common.save')} onClick={handleSaveDisplayName} disabled={savingName}>
+                          <Save size={14} />
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="settings-value" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        {user?.displayName || '—'}
+                        <button className="icon-btn" title={t('settings.profile_edit_name')} onClick={() => { setDisplayName(user?.displayName || ''); setEditingName(true); }}>
+                          <Edit3 size={14} />
+                        </button>
+                      </span>
+                    )}
                   </div>
                   <div className="settings-profile-row">
                     <span className="settings-label">{t('settings.label_email')}</span>
@@ -255,6 +359,137 @@ export default function Settings() {
               )}
             </div>
           </section>
+
+          {/* ── Admin: Email Notifications ── */}
+          {isAdmin && (
+            <section className="settings-card">
+              <div className="settings-card-header">
+                <Mail size={18} />
+                <h2>{t('settings.admin_email_title')}</h2>
+              </div>
+              <div className="settings-card-body">
+                <p className="settings-desc">{t('settings.admin_email_desc')}</p>
+                <div className="settings-admin-form">
+                  <div className="settings-admin-row">
+                    <label>{t('settings.admin_email_enabled')}</label>
+                    <select
+                      value={adminSettings['email.enabled'] || 'false'}
+                      onChange={e => updateAdminSetting('email.enabled', e.target.value)}
+                    >
+                      <option value="false">{t('common.inactive')}</option>
+                      <option value="true">{t('common.active')}</option>
+                    </select>
+                  </div>
+                  <div className="settings-admin-row">
+                    <label>{t('settings.admin_email_host')}</label>
+                    <input
+                      type="text"
+                      placeholder="smtp.example.com"
+                      value={adminSettings['email.host'] || ''}
+                      onChange={e => updateAdminSetting('email.host', e.target.value)}
+                    />
+                  </div>
+                  <div className="settings-admin-row">
+                    <label>{t('settings.admin_email_port')}</label>
+                    <input
+                      type="number"
+                      placeholder="587"
+                      value={adminSettings['email.port'] || ''}
+                      onChange={e => updateAdminSetting('email.port', e.target.value)}
+                    />
+                  </div>
+                  <div className="settings-admin-row">
+                    <label>{t('settings.admin_email_secure')}</label>
+                    <select
+                      value={adminSettings['email.secure'] || 'false'}
+                      onChange={e => updateAdminSetting('email.secure', e.target.value)}
+                    >
+                      <option value="false">STARTTLS (Port 587)</option>
+                      <option value="true">SSL/TLS (Port 465)</option>
+                    </select>
+                  </div>
+                  <div className="settings-admin-row">
+                    <label>{t('settings.admin_email_user')}</label>
+                    <input
+                      type="text"
+                      placeholder="user@example.com"
+                      value={adminSettings['email.user'] || ''}
+                      onChange={e => updateAdminSetting('email.user', e.target.value)}
+                    />
+                  </div>
+                  <div className="settings-admin-row">
+                    <label>{t('settings.admin_email_pass')}</label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={adminSettings['email.pass'] || ''}
+                      onChange={e => updateAdminSetting('email.pass', e.target.value)}
+                    />
+                  </div>
+                  <div className="settings-admin-row">
+                    <label>{t('settings.admin_email_from')}</label>
+                    <input
+                      type="text"
+                      placeholder="Nexora <noreply@example.com>"
+                      value={adminSettings['email.from'] || ''}
+                      onChange={e => updateAdminSetting('email.from', e.target.value)}
+                    />
+                  </div>
+                  <div className="settings-admin-actions">
+                    <button className="btn btn-primary" onClick={handleSaveAdminSettings} disabled={adminSaving}>
+                      <Save size={16} />
+                      <span>{adminSaving ? t('common.loading') : t('common.save')}</span>
+                    </button>
+                    <button className="btn btn-secondary" onClick={handleTestEmail} disabled={emailTesting || adminSettings['email.enabled'] !== 'true'}>
+                      <Mail size={16} />
+                      <span>{emailTesting ? t('common.loading') : t('settings.admin_email_test')}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* ── Admin: Database Backup ── */}
+          {isAdmin && (
+            <section className="settings-card">
+              <div className="settings-card-header">
+                <Database size={18} />
+                <h2>{t('settings.admin_backup_title')}</h2>
+              </div>
+              <div className="settings-card-body">
+                <p className="settings-desc">{t('settings.admin_backup_desc')}</p>
+                <div className="settings-admin-form">
+                  <div className="settings-admin-row">
+                    <label>{t('settings.admin_backup_enabled')}</label>
+                    <select
+                      value={adminSettings['backup.enabled'] || 'false'}
+                      onChange={e => updateAdminSetting('backup.enabled', e.target.value)}
+                    >
+                      <option value="false">{t('common.inactive')}</option>
+                      <option value="true">{t('common.active')}</option>
+                    </select>
+                  </div>
+                  {adminSettings['backup.last_run'] && (
+                    <div className="settings-admin-row">
+                      <label>{t('settings.admin_backup_last')}</label>
+                      <span className="settings-value">{new Date(adminSettings['backup.last_run']).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="settings-admin-actions">
+                    <button className="btn btn-primary" onClick={handleSaveAdminSettings} disabled={adminSaving}>
+                      <Save size={16} />
+                      <span>{adminSaving ? t('common.loading') : t('common.save')}</span>
+                    </button>
+                    <button className="btn btn-secondary" onClick={handleBackup} disabled={backupRunning || adminSettings['backup.enabled'] !== 'true'}>
+                      <Database size={16} />
+                      <span>{backupRunning ? t('common.loading') : t('settings.admin_backup_run')}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* ── About Nexora ── */}
           <section className="settings-card">

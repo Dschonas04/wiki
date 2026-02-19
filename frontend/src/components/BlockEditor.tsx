@@ -26,6 +26,8 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Color from '@tiptap/extension-color';
 import TextStyle from '@tiptap/extension-text-style';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { common, createLowlight } from 'lowlight';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   Heading1, Heading2, Heading3,
@@ -38,12 +40,14 @@ import {
   Pilcrow
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { api } from '../api/client';
 
 interface BlockEditorProps {
   content: string;
   onChange: (html: string) => void;
   placeholder?: string;
   editable?: boolean;
+  pageId?: number | string;
 }
 
 // Slash-Command Konfiguration
@@ -71,17 +75,41 @@ const isValidUrl = (url: string): boolean => {
   }
 };
 
-export default function BlockEditor({ content, onChange, placeholder, editable = true }: BlockEditorProps) {
+// Create lowlight instance with common languages (js, ts, python, bash, css, html, json, etc.)
+const lowlight = createLowlight(common);
+
+export default function BlockEditor({ content, onChange, placeholder, editable = true, pageId }: BlockEditorProps) {
   const { t } = useLanguage();
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashFilter, setSlashFilter] = useState('');
   const [slashIndex, setSlashIndex] = useState(0);
   const slashRef = useRef<HTMLDivElement>(null);
 
+  // Bild-Upload-Hilfsfunktion
+  const uploadAndInsertImage = useCallback(async (file: File, editorInstance: any) => {
+    if (!pageId || !editorInstance) return;
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 25 * 1024 * 1024) return;
+
+    try {
+      const attachment = await api.uploadAttachment(pageId, file);
+      const url = `/api/attachments/${attachment.id}/download`;
+      editorInstance.chain().focus().setImage({ src: url, alt: file.name }).run();
+    } catch (err) {
+      console.error('Image upload failed:', err);
+    }
+  }, [pageId]);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4] },
+        codeBlock: false, // replaced by CodeBlockLowlight
+      }),
+      CodeBlockLowlight.configure({
+        lowlight,
+        defaultLanguage: 'plaintext',
+        HTMLAttributes: { class: 'code-block-highlighted' },
       }),
       Placeholder.configure({
         placeholder: placeholder || t('blockeditor.placeholder'),
@@ -113,6 +141,34 @@ export default function BlockEditor({ content, onChange, placeholder, editable =
     editorProps: {
       attributes: {
         class: 'block-editor-content',
+      },
+      handleDrop: (_view, event) => {
+        if (!pageId) return false;
+        const files = event.dataTransfer?.files;
+        if (files && files.length > 0) {
+          const file = files[0];
+          if (file.type.startsWith('image/')) {
+            event.preventDefault();
+            uploadAndInsertImage(file, editor);
+            return true;
+          }
+        }
+        return false;
+      },
+      handlePaste: (_view, event) => {
+        if (!pageId) return false;
+        const items = event.clipboardData?.items;
+        if (items) {
+          for (const item of Array.from(items)) {
+            if (item.type.startsWith('image/')) {
+              event.preventDefault();
+              const file = item.getAsFile();
+              if (file) uploadAndInsertImage(file, editor);
+              return true;
+            }
+          }
+        }
+        return false;
       },
       handleKeyDown: (_view, event) => {
         // Slash commands
@@ -235,8 +291,20 @@ export default function BlockEditor({ content, onChange, placeholder, editable =
   };
 
   const addImage = () => {
-    const url = window.prompt('Bild-URL eingeben:');
-    if (url && isValidUrl(url)) editor.chain().focus().setImage({ src: url }).run();
+    if (pageId) {
+      // Upload-Dialog öffnen
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (file) uploadAndInsertImage(file, editor);
+      };
+      input.click();
+    } else {
+      const url = window.prompt('Bild-URL eingeben:');
+      if (url && isValidUrl(url)) editor.chain().focus().setImage({ src: url }).run();
+    }
   };
 
   const ToolBtn = ({ onClick, active, title, children }: {

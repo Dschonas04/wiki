@@ -93,10 +93,12 @@ function isValidColor(color) {
 // Exportiert alle Validierungsfunktionen für die Verwendung in Routen
 module.exports = { validatePassword, validatePageInput, isValidColor, sanitizeHtml };
 
+const sanitizeHtmlLib = require('sanitize-html');
+
 /**
  * Bereinigt HTML-Inhalte serverseitig (Defense-in-Depth).
- * Entfernt die gefährlichsten XSS-Vektoren: script, iframe, object, embed,
- * applet, form-Tags sowie Event-Handler und javascript:/vbscript:-URIs.
+ * Verwendet die sanitize-html-Bibliothek für robuste DOM-basierte Sanitisierung,
+ * die gegen alle bekannten XSS-Vektoren (SVG, MathML, verschachtelte Tags etc.) schützt.
  * Die primäre Sanitisierung erfolgt im Frontend via DOMPurify.
  *
  * @param {string} html - Der zu bereinigende HTML-String
@@ -104,14 +106,37 @@ module.exports = { validatePassword, validatePageInput, isValidColor, sanitizeHt
  */
 function sanitizeHtml(html) {
   if (!html || typeof html !== 'string') return html;
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
-    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
-    .replace(/<embed\b[^>]*\/?>/gi, '')
-    .replace(/<applet\b[^<]*(?:(?!<\/applet>)<[^<]*)*<\/applet>/gi, '')
-    .replace(/\bon\w+\s*=\s*"[^"]*"/gi, '')
-    .replace(/\bon\w+\s*=\s*'[^']*'/gi, '')
-    .replace(/javascript\s*:/gi, 'blocked:')
-    .replace(/vbscript\s*:/gi, 'blocked:');
+  return sanitizeHtmlLib(html, {
+    allowedTags: sanitizeHtmlLib.defaults.allowedTags.concat([
+      'img', 'figure', 'figcaption', 'video', 'audio', 'source',
+      'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+      'details', 'summary', 'mark', 'del', 'ins', 'sub', 'sup',
+      'pre', 'code', 'blockquote', 'hr', 'br', 'span', 'div',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+      'input',
+    ]),
+    allowedAttributes: {
+      ...sanitizeHtmlLib.defaults.allowedAttributes,
+      '*': ['class', 'id', 'style', 'data-*'],
+      img: ['src', 'alt', 'title', 'width', 'height', 'loading'],
+      a: ['href', 'title', 'target', 'rel'],
+      video: ['src', 'controls', 'width', 'height', 'autoplay', 'muted'],
+      audio: ['src', 'controls', 'autoplay', 'muted'],
+      source: ['src', 'type'],
+      td: ['colspan', 'rowspan', 'style'],
+      th: ['colspan', 'rowspan', 'style'],
+      input: ['type', 'checked', 'disabled'],
+      code: ['class'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto', 'data'],
+    allowedSchemesByTag: {
+      img: ['http', 'https', 'data'],
+    },
+    // input nur als Task-List-Checkbox erlauben
+    exclusiveFilter: (frame) => {
+      if (frame.tag === 'input' && frame.attribs.type !== 'checkbox') return true;
+      return false;
+    },
+  });
 }

@@ -23,13 +23,15 @@ import {
   Activity,
   Layers,
   Lock,
+  Star,
+  Edit3,
 } from 'lucide-react';
 
 // Authentifizierungs-Kontext für Benutzerinformationen und Berechtigungen
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 // API-Client und Typdefinitionen
-import { api, type WikiPage, type HealthData } from '../api/client';
+import { api, type WikiPage, type HealthData, type FavoritePage } from '../api/client';
 // Wiederverwendbare Seitenkopf-Komponente
 import PageHeader from '../components/PageHeader';
 
@@ -40,6 +42,8 @@ export default function Home() {
 
   // Zustand für die zuletzt bearbeiteten Seiten
   const [recentPages, setRecentPages] = useState<WikiPage[]>([]);
+  // Zustand für Favoriten
+  const [favorites, setFavorites] = useState<FavoritePage[]>([]);
   // Zustand für Systemstatistiken (Seitenanzahl, Benutzer, Uptime usw.)
   const [stats, setStats] = useState<HealthData | null>(null);
   // Ladezustand für die Liste der letzten Seiten
@@ -49,6 +53,7 @@ export default function Home() {
   useEffect(() => {
     api.getRecentPages(8).then(setRecentPages).catch(() => {}).finally(() => setLoadingRecent(false));
     api.getHealth().then(setStats).catch(() => {});
+    api.getFavorites().then(favs => setFavorites(favs.slice(0, 5))).catch(() => {});
   }, []);
 
   // Hilfsfunktion: Datum im deutschen Format formatieren
@@ -131,6 +136,30 @@ export default function Home() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Favoriten-Bereich – nur anzeigen wenn vorhanden */}
+        {favorites.length > 0 && (
+          <>
+            <div className="section-title">
+              <Star size={18} /> {t('home.favorites_title')}
+            </div>
+            <div className="recent-pages-list">
+              {favorites.map((fav) => (
+                <Link to={`/pages/${fav.id}`} className="recent-page-item" key={fav.id}>
+                  <Star size={16} className="recent-page-icon" style={{ color: 'var(--c-warning)' }} />
+                  <span className="recent-page-title">{fav.title}</span>
+                  <span className="recent-page-meta">
+                    {fav.updated_by_name && <span>{fav.updated_by_name}</span>}
+                    <span>{formatDate(fav.updated_at)}</span>
+                  </span>
+                </Link>
+              ))}
+              <Link to="/favorites" className="recent-page-item" style={{ justifyContent: 'center', color: 'var(--color-primary)', fontWeight: 500 }}>
+                {t('home.favorites_all')} <ArrowRight size={14} />
+              </Link>
+            </div>
+          </>
         )}
 
         {/* Bereich: Zuletzt bearbeitete Seiten */}
