@@ -33,9 +33,9 @@ export default function Login() {
       <div className="login-card">
         <div className="login-header">
           <div className="login-logo">
-            <img src="/logo.png" alt="Nexora" className="login-logo-img" />
+            <img src="/logo.png" alt="Nexora Knowledge" className="login-logo-img" />
           </div>
-          <h1>Nexora</h1>
+          <h1>Nexora Knowledge</h1>
           <p>{t('login.subtitle')}</p>
         </div>
 

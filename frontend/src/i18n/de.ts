@@ -54,7 +54,7 @@ const de: Record<string, string> = {
   'workflow.archived': 'Archiviert',
 
   // ── Layout / Navigation ──
-  'layout.brand': 'Nexora',
+  'layout.brand': 'Nexora Knowledge',
   'layout.toggle_nav': 'Navigation umschalten',
   'layout.search_placeholder': 'Suchen… ⌘K',
   'layout.search_running': 'Suche läuft…',
@@ -77,7 +77,7 @@ const de: Record<string, string> = {
   'layout.nav.settings': 'Einstellungen',
 
   // ── Login ──
-  'login.title': 'Nexora',
+  'login.title': 'Nexora Knowledge',
   'login.subtitle': 'Melde dich bei deinem Konto an',
   'login.username': 'Benutzername',
   'login.username_placeholder': 'Benutzername eingeben',
@@ -90,10 +90,10 @@ const de: Record<string, string> = {
   'login.footer': 'Kontaktiere deinen Administrator für Zugangsdaten',
 
   // ── Home ──
-  'home.title': 'Willkommen bei Nexora',
+  'home.title': 'Willkommen bei Nexora Knowledge',
   'home.subtitle': 'Dein modernes Wissensmanagement-System',
   'home.greeting': 'Hallo, {name}!',
-  'home.description': 'Erstelle, organisiere und teile Wissen mit deinem Team. Nexora bietet Markdown-Bearbeitung, Volltextsuche, Versionierung und rollenbasierte Zugriffskontrolle.',
+  'home.description': 'Erstelle, organisiere und teile Wissen mit deinem Team. Nexora Knowledge bietet Markdown-Bearbeitung, Volltextsuche, Versionierung und rollenbasierte Zugriffskontrolle.',
   'home.create_page': 'Seite erstellen',
   'home.all_pages': 'Alle Seiten',
   'home.stat_pages': 'Seiten',
@@ -121,7 +121,7 @@ const de: Record<string, string> = {
 
   // ── Pages ──
   'pages.title': 'Seiten',
-  'pages.subtitle': '{count} Seiten in Nexora',
+  'pages.subtitle': '{count} Seiten in Nexora Knowledge',
   'pages.import': 'Importieren',
   'pages.export_all': 'Alle exportieren',
   'pages.new_page': 'Neue Seite',
@@ -550,8 +550,8 @@ const de: Record<string, string> = {
   'settings.tag_delete_message': '"{name}" wird von allen Seiten entfernt.',
   'settings.tag_page_count': '{count} Seiten',
   'settings.tag_delete_btn': 'Tag löschen',
-  'settings.about_title': 'Über Nexora',
-  'settings.about_desc': 'Nexora ist ein modernes Wissensmanagement-System mit Team-Bereichen, Veröffentlichungs-Workflow und rollenbasierter Zugriffskontrolle.',
+  'settings.about_title': 'Über Nexora Knowledge',
+  'settings.about_desc': 'Nexora Knowledge ist ein modernes Wissensmanagement-System mit Team-Bereichen, Veröffentlichungs-Workflow und rollenbasierter Zugriffskontrolle.',
   'settings.about_version': 'Version',
   'settings.about_source': 'Quellcode',
   'settings.about_license': 'Lizenz',
