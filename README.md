@@ -1,4 +1,4 @@
-# Nexora
+# Nexora Knowledge
 
 A self-hosted knowledge management platform with team spaces, publishing workflows, role-based access control (RBAC), optional LDAP authentication, multi-language support, and an interactive knowledge graph.
 

@@ -167,9 +167,9 @@ export default function Layout() {
         <div className="sidebar-brand">
           <NavLink to="/" className="brand-link" onClick={closeSidebar}>
             <div className="brand-icon">
-              <img src="/logo.png" alt="Nexora" className="brand-logo-img" />
+              <img src="/logo.png" alt="Nexora Knowledge" className="brand-logo-img" />
             </div>
-            <span className="brand-text">Nexora</span>
+            <span className="brand-text">Nexora Knowledge</span>
           </NavLink>
         </div>
 

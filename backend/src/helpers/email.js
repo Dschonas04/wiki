@@ -86,15 +86,15 @@ async function sendNotificationEmail(to, subject, htmlBody) {
     await transport.sendMail({
       from: config.from,
       to,
-      subject: `[Nexora] ${subject}`,
+      subject: `[Nexora Knowledge] ${subject}`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
           <div style="border-bottom: 3px solid #6366f1; padding-bottom: 16px; margin-bottom: 24px;">
-            <h2 style="margin: 0; color: #1a1a2e;">Nexora</h2>
+            <h2 style="margin: 0; color: #1a1a2e;">Nexora Knowledge</h2>
           </div>
           ${htmlBody}
           <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 12px;">
-            Diese Benachrichtigung wurde automatisch von Nexora gesendet.
+            Diese Benachrichtigung wurde automatisch von Nexora Knowledge gesendet.
           </div>
         </div>
       `,
